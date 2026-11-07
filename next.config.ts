@@ -1,12 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   experimental: {
     agentFeedback: true,
   },
-  cacheComponents: true,
-  partialPrefetching: true,
+
+  // Cache Components disabled to avoid
+  // prerendering conflicts with Clerk and runtime APIs.
+
   turbopack: {
     rules: {
       "*.css": {

@@ -1,0 +1,444 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  TEACHER
+  CLIENT
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum TeacherVerificationStatus {
+  DRAFT
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum ConnectionStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+  CONNECTION_ESTABLISHED
+  HIRING_CONFIRMED
+  CLOSED
+}
+
+enum CreditTransactionType {
+  FREE_CREDIT
+  CREDIT_PURCHASE
+  CREDIT_RESERVED
+  CREDIT_CONSUMED
+  CREDIT_REFUNDED
+  ADMIN_ADJUSTMENT
+  CREDIT_EXPIRY
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PAST_DUE
+}
+
+model User {
+  id                String     @id @default(cuid())
+  clerkId           String     @unique
+  email             String     @unique
+  role              Role
+  status            UserStatus @default(ACTIVE)
+  firstName         String?
+  lastName          String?
+  phone             String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  teacherProfile    TeacherProfile?
+  clientProfile     ClientProfile?
+  creditWallet      CreditWallet?
+  creditTransactions CreditTransaction[]
+  notifications     Notification[]
+  subscriptions     UserSubscription[]
+  payments          Payment[]
+  supportTickets    SupportTicket[]
+  adminActivityLogs AdminActivityLog[] @relation("AdminActions")
+
+  @@index([clerkId])
+  @@index([email])
+  @@index([role])
+}
+
+model TeacherProfile {
+  id                    String                     @id @default(cuid())
+  userId                String                     @unique
+  user                  User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Personal
+  dateOfBirth           DateTime?
+  city                  String?
+  address               String?
+  profilePhotoUrl       String?
+
+  // Education
+  college               String?
+  degree                String?
+  currentYear           String?
+  branch                String?
+  qualifications        String?
+
+  // Teaching
+  experienceYears       Int?                       @default(0)
+  preferredMode         String?                    // online / offline / both
+  availability          String?
+  expectedSalary        Int?
+  preferredLocation     String?
+  languages             String[]
+
+  verificationStatus    TeacherVerificationStatus  @default(DRAFT)
+  isVerified            Boolean                    @default(false)
+
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+
+  educationRecords      EducationRecord[]
+  subjects              TeacherSubject[]
+  videos                TeacherVideo[]
+  aiInterviews          AIInterview[]
+  verificationRecords   VerificationRecord[]
+  connectionRequests    ConnectionRequest[]        @relation("TeacherRequests")
+  hiringRecords         HiringRecord[]             @relation("TeacherHirings")
+  reviews               Review[]
+
+  @@index([verificationStatus])
+  @@index([city])
+}
+
+model ClientProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  location          String?
+  studentClass      String?
+  requiredSubjects  String[]
+  teachingMode      String?
+  preferredLanguage String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  connectionRequests ConnectionRequest[] @relation("ClientRequests")
+  hiringRecords     HiringRecord[]       @relation("ClientHirings")
+  reviews           Review[]
+}
+
+model EducationRecord {
+  id              String         @id @default(cuid())
+  teacherId       String
+  teacher         TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  institution     String
+  degree          String
+  year            String?
+  documentUrl     String?
+  createdAt       DateTime       @default(now())
+}
+
+model TeacherSubject {
+  id          String         @id @default(cuid())
+  teacherId   String
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  subject     String
+  classes     String[]       // e.g. ["Class 8", "Class 9", "Class 10"]
+  createdAt   DateTime       @default(now())
+
+  @@index([subject])
+}
+
+model TeacherVideo {
+  id          String         @id @default(cuid())
+  teacherId   String
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  type        String         // "introduction" | "demo"
+  title       String?
+  url         String
+  publicId    String?        // Cloudinary public_id
+  duration    Int?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model AIInterview {
+  id                String         @id @default(cuid())
+  teacherId         String
+  teacher           TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  status            String         @default("pending") // pending | in_progress | completed | failed
+  startedAt         DateTime?
+  completedAt       DateTime?
+  rawResponses      Json?
+
+  // Video recording fields
+  recordingUrl      String?
+  recordingPublicId String?
+  recordingDuration Int?           // seconds
+
+  createdAt         DateTime       @default(now())
+  evaluation        InterviewEvaluation?
+}
+
+model InterviewEvaluation {
+  id                String      @id @default(cuid())
+  interviewId       String      @unique
+  interview         AIInterview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  subjectKnowledge  Float?
+  communication     Float?
+  explanationSkills Float?
+  overallScore      Float?
+  strengths         String[]
+  weaknesses        String[]
+  summary           String?
+  fullReport        Json?
+  createdAt         DateTime    @default(now())
+}
+
+model VerificationRecord {
+  id          String         @id @default(cuid())
+  teacherId   String
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  status      TeacherVerificationStatus
+  reviewedBy  String?        // admin userId
+  notes       String?
+  createdAt   DateTime       @default(now())
+}
+
+model CreditWallet {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  freeCredits       Int      @default(5)
+  purchasedCredits  Int      @default(0)
+  reservedCredits   Int      @default(0)
+  usedCredits       Int      @default(0)
+
+  updatedAt         DateTime @updatedAt
+}
+
+model CreditTransaction {
+  id            String                @id @default(cuid())
+  userId        String
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type          CreditTransactionType
+  amount        Int
+  balanceAfter  Int
+  referenceId   String                @unique
+  description   String?
+  metadata      Json?
+  createdAt     DateTime              @default(now())
+
+  @@index([userId])
+  @@index([referenceId])
+}
+
+model ConnectionRequest {
+  id                String           @id @default(cuid())
+  clientId          String
+  client            ClientProfile    @relation("ClientRequests", fields: [clientId], references: [id])
+  teacherId         String
+  teacher           TeacherProfile   @relation("TeacherRequests", fields: [teacherId], references: [id])
+
+  status            ConnectionStatus @default(PENDING)
+  reservedCreditId  String?          // link to CreditTransaction
+  adminNotes        String?
+  assignedAdminId   String?
+  contactSharedAt   DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  hiringRecord      HiringRecord?
+
+  @@index([status])
+  @@index([clientId])
+  @@index([teacherId])
+}
+
+model HiringRecord {
+  id                String            @id @default(cuid())
+  connectionId      String            @unique
+  connection        ConnectionRequest @relation(fields: [connectionId], references: [id])
+
+  teacherId         String
+  teacher           TeacherProfile    @relation("TeacherHirings", fields: [teacherId], references: [id])
+  clientId          String
+  client            ClientProfile     @relation("ClientHirings", fields: [clientId], references: [id])
+
+  agreedFee         Int?
+  status            String            @default("active") // active | completed | cancelled
+  startedAt         DateTime?
+  endedAt           DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model SubscriptionPlan {
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  description     String?
+  priceMonthly    Int
+  priceYearly     Int?
+  creditsIncluded Int      @default(0)
+  features        String[]
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  subscriptions   UserSubscription[]
+}
+
+model UserSubscription {
+  id            String             @id @default(cuid())
+  userId        String
+  user          User               @relation(fields: [userId], references: [id])
+  planId        String
+  plan          SubscriptionPlan   @relation(fields: [planId], references: [id])
+
+  status        SubscriptionStatus @default(ACTIVE)
+  startDate     DateTime
+  endDate       DateTime
+  autoRenew     Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([userId])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+
+  amount            Int
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  purpose           String        // registration | credits | subscription | etc
+  metadata          Json?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  refunds           Refund[]
+
+  @@index([userId])
+  @@index([razorpayOrderId])
+}
+
+model Refund {
+  id          String   @id @default(cuid())
+  paymentId   String
+  payment     Payment  @relation(fields: [paymentId], references: [id])
+  amount      Int
+  reason      String?
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+}
+
+model Review {
+  id          String         @id @default(cuid())
+  teacherId   String
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [id])
+  clientId    String
+  client      ClientProfile  @relation(fields: [clientId], references: [id])
+
+  rating      Int
+  comment     String?
+  createdAt   DateTime       @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  subject     String
+  description String
+  status      String   @default("open") // open | in_progress | resolved | closed
+  priority    String   @default("medium")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PlatformSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+}
+
+model AdminActivityLog {
+  id          String   @id @default(cuid())
+  adminId     String
+  admin       User     @relation("AdminActions", fields: [adminId], references: [id])
+
+  action      String
+  entityType  String?
+  entityId    String?
+  previousValue Json?
+  newValue    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
+}
+
