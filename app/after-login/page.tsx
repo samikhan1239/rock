@@ -9,7 +9,6 @@ import {
   Loader2,
   Sparkles,
   BookOpen,
-  CheckCircle2,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -35,9 +34,8 @@ function LoadingScreen() {
           </div>
         </div>
 
-        {/* Main loading content */}
+        {/* Loading content */}
         <div className="rounded-2xl border border-slate-200/80 bg-white p-8 shadow-xl shadow-slate-200/40 sm:p-10">
-          {/* Animated loader */}
           <div className="mb-7 flex justify-center">
             <div className="relative flex h-24 w-24 items-center justify-center">
               <div className="absolute inset-0 rounded-full border-[5px] border-indigo-100" />
@@ -52,24 +50,22 @@ function LoadingScreen() {
             </div>
           </div>
 
-          {/* Heading */}
           <div className="text-center">
             <h1 className="text-xl font-bold tracking-tight text-slate-900">
               Preparing your dashboard
             </h1>
 
             <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-500">
-              We're securely verifying your account and preparing your
+              We&apos;re securely verifying your account and preparing your
               personalized experience.
             </p>
           </div>
 
-          {/* Indeterminate progress */}
+          {/* Progress */}
           <div className="mt-8 h-1.5 w-full overflow-hidden rounded-full bg-indigo-100">
             <div className="h-full w-1/3 animate-[loading_1.5s_ease-in-out_infinite] rounded-full bg-indigo-600" />
           </div>
 
-          {/* Current status */}
           <div className="mt-5 flex items-center justify-center gap-2">
             <Loader2 size={14} className="animate-spin text-indigo-600" />
 
@@ -86,18 +82,9 @@ function LoadingScreen() {
 
             <div className="grid grid-cols-3 gap-3">
               {[
-                {
-                  icon: GraduationCap,
-                  label: "Teachers",
-                },
-                {
-                  icon: Users,
-                  label: "Students",
-                },
-                {
-                  icon: BookOpen,
-                  label: "Learning",
-                },
+                { icon: GraduationCap, label: "Teachers" },
+                { icon: Users, label: "Students" },
+                { icon: BookOpen, label: "Learning" },
               ].map(({ icon: Icon, label }) => (
                 <div
                   key={label}
@@ -144,7 +131,7 @@ function LoadingScreen() {
   );
 }
 
-async function RoleRedirect() {
+async function getRedirectPath(): Promise<never> {
   const { userId } = await auth();
 
   if (!userId) {
@@ -187,10 +174,16 @@ async function RoleRedirect() {
   }
 }
 
+async function RedirectHandler() {
+  await getRedirectPath();
+
+  return null;
+}
+
 export default function AfterLoginPage() {
   return (
     <Suspense fallback={<LoadingScreen />}>
-      <RoleRedirect />
+      <RedirectHandler />
     </Suspense>
   );
 }
