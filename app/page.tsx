@@ -7,11 +7,13 @@ import WhyTutorSathi from "@/components/home/WhyTeachMate";
 import FinalCTA from "@/components/home/FinalCTA";
 import Verification from "@/components/home/Verification";
 import Footer from "@/components/home/Footer";
+import HomeLoader from "@/components/home/HomeLoader";
 
 export default function HomePage() {
   return (
     <div className="relative min-h-screen overflow-x-clip bg-[#050914] text-white">
       <Background />
+      <HomeLoader/>
       <Navbar />
 
       <main className="relative z-10">

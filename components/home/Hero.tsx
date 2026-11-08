@@ -176,9 +176,9 @@ return ( <section
       <div className="pointer-events-none absolute left-1/2 top-1/2 h-[280px] w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-400/[0.09] blur-[90px] sm:h-[400px] sm:w-[400px] sm:blur-[110px] lg:h-[480px] lg:w-[480px]" />
 
       {/* GLOBE */}
-      <div className="relative z-10 w-full max-w-[360px] -translate-y-2 scale-100 sm:max-w-[560px] sm:-translate-y-12 sm:scale-110 lg:max-w-[720px] lg:-translate-y-20 lg:scale-[1.2]">
-        <GlobalGlobe />
-      </div>
+     <div className="relative z-10 w-full max-w-[360px] -translate-y-2 scale-100 sm:max-w-[560px] sm:-translate-y-16 sm:scale-110 lg:max-w-[720px] lg:-translate-y-40 lg:scale-[1.2]">
+  <GlobalGlobe />
+</div>
 
       {/* AI VERIFIED BADGE */}
       <motion.div
@@ -188,8 +188,8 @@ return ( <section
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="absolute right-0 top-[2%] z-20 rounded-xl border border-cyan-300/15 bg-[#0b1728]/90 p-2.5 shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl sm:top-[1%] sm:rounded-2xl sm:p-4"
-      >
+        className="absolute right-0 -top-8 z-20 rounded-xl border border-cyan-300/15 bg-[#0b1728]/90 p-2.5 shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl sm:-top-10 sm:rounded-2xl sm:p-4 lg:-top-14"
+       >
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="rounded-lg bg-cyan-400/10 p-2 text-cyan-300 sm:rounded-xl sm:p-3">
             <BadgeCheck size={18} className="sm:h-[22px] sm:w-[22px]" />

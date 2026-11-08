@@ -22,7 +22,7 @@ export default function Footer() {
             </div>
 
             <span className="text-lg font-bold tracking-tight text-white">
-              Teach<span className="text-cyan-300">Mate</span>
+              Tutor<span className="text-cyan-300">Sathi</span>
               <span className="text-cyan-400">.</span>
             </span>
           </Link>
