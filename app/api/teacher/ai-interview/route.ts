@@ -3,6 +3,16 @@ import { auth } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "@/lib/prisma";
 
+// =========================================
+// CONFIGURATION
+// =========================================
+
+const INTERVIEW_DURATION_MINUTES = 5;
+const MAX_INTERVIEW_DURATION_MS = 5 * 60 * 1000;
+const MAX_INTERVIEW_QUESTIONS = 5;
+
+const EVALUATION_MODEL = "gemini-3.6-flash";
+
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
@@ -18,28 +28,187 @@ type EvaluationResult = {
   summary: string;
 };
 
-const genAI = new GoogleGenerativeAI(
-  process.env.GEMINI_API_KEY || ""
-);
+// =========================================
+// FIXED INTERVIEW QUESTIONS
+// =========================================
 
-const model = genAI.getGenerativeModel({
-  model: "gemini-3.6-flash",
-});
+const INTERVIEW_QUESTIONS = [
+  {
+    stage: "introduction",
+    question:
+      "Hello! Welcome to TutorSathi. Please introduce yourself and briefly tell us about your educational background.",
+  },
+  {
+    stage: "motivation",
+    question:
+      "What motivates you to become a teacher on TutorSathi, and why do you enjoy helping students learn?",
+  },
+  {
+    stage: "subjects",
+    question:
+      "Which subjects and school classes are you comfortable teaching? Please briefly explain your strongest subject.",
+  },
+  {
+    stage: "topic_selection",
+    question:
+      "Choose one topic from your strongest subject that you would like to teach. Tell us the topic and briefly explain why you selected it.",
+  },
+  {
+    stage: "teaching_demonstration",
+    question:
+      "Now imagine I am a school student attending your class. Please teach me the topic you selected. Explain it step by step, use a simple example, and make it easy for a student to understand. You may begin!",
+  },
+] as const;
+
+// =========================================
+// GEMINI CONFIGURATION
+// =========================================
+
+function getGeminiModel() {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      "Gemini API key is not configured."
+    );
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+
+  return genAI.getGenerativeModel({
+    model: EVALUATION_MODEL,
+  });
+}
+
+// =========================================
+// RESPONSE HELPER
+// =========================================
 
 const jsonResponse = (
   data: Record<string, unknown>,
   status = 200
-) => NextResponse.json(data, { status });
+) => {
+  return NextResponse.json(data, { status });
+};
+
+// =========================================
+// HISTORY HELPERS
+// =========================================
+
+function getHistory(
+  rawResponses: unknown
+): ChatMessage[] {
+  if (
+    !rawResponses ||
+    typeof rawResponses !== "object"
+  ) {
+    return [];
+  }
+
+  const responses = rawResponses as {
+    history?: unknown;
+  };
+
+  if (!Array.isArray(responses.history)) {
+    return [];
+  }
+
+  return responses.history.filter(
+    (message): message is ChatMessage => {
+      if (
+        !message ||
+        typeof message !== "object"
+      ) {
+        return false;
+      }
+
+      const item = message as Record<
+        string,
+        unknown
+      >;
+
+      return (
+        (item.role === "user" ||
+          item.role === "assistant") &&
+        typeof item.content === "string"
+      );
+    }
+  );
+}
+
+function getQuestionCount(
+  history: ChatMessage[]
+): number {
+  return history.filter(
+    (message) => message.role === "assistant"
+  ).length;
+}
+
+function getAnswerCount(
+  history: ChatMessage[]
+): number {
+  return history.filter(
+    (message) => message.role === "user"
+  ).length;
+}
+
+// =========================================
+// REMAINING TIME HELPER
+// FIXED: SUPPORTS DATE | NULL
+// =========================================
+
+function getRemainingTime(
+  startedAt: Date | null
+) {
+  // Missing start date means the interview
+  // cannot safely continue.
+  if (!startedAt) {
+    return {
+      elapsed: MAX_INTERVIEW_DURATION_MS,
+      remaining: 0,
+      expired: true,
+      remainingSeconds: 0,
+    };
+  }
+
+  const elapsed =
+    Date.now() - startedAt.getTime();
+
+  const remaining = Math.max(
+    0,
+    MAX_INTERVIEW_DURATION_MS - elapsed
+  );
+
+  return {
+    elapsed,
+    remaining,
+    expired: remaining <= 0,
+    remainingSeconds: Math.ceil(
+      remaining / 1000
+    ),
+  };
+}
+
+// =========================================
+// EVALUATION PARSING
+// =========================================
 
 function clampScore(value: unknown): number {
   const number = Number(value);
 
-  if (!Number.isFinite(number)) return 0;
+  if (!Number.isFinite(number)) {
+    return 0;
+  }
 
-  return Math.min(10, Math.max(0, number));
+  return Math.min(
+    10,
+    Math.max(0, number)
+  );
 }
 
-function parseEvaluation(text: string): EvaluationResult {
+function parseEvaluation(
+  text: string
+): EvaluationResult {
   const cleaned = text
     .replace(/```json/gi, "")
     .replace(/```/g, "")
@@ -59,19 +228,34 @@ function parseEvaluation(text: string): EvaluationResult {
   );
 
   return {
-    subjectKnowledge: clampScore(parsed.subjectKnowledge),
-    communication: clampScore(parsed.communication),
-    explanationSkills: clampScore(parsed.explanationSkills),
-    overallScore: clampScore(parsed.overallScore),
+    subjectKnowledge: clampScore(
+      parsed.subjectKnowledge
+    ),
 
-    strengths: Array.isArray(parsed.strengths)
+    communication: clampScore(
+      parsed.communication
+    ),
+
+    explanationSkills: clampScore(
+      parsed.explanationSkills
+    ),
+
+    overallScore: clampScore(
+      parsed.overallScore
+    ),
+
+    strengths: Array.isArray(
+      parsed.strengths
+    )
       ? parsed.strengths.filter(
           (item: unknown): item is string =>
             typeof item === "string"
         )
       : [],
 
-    weaknesses: Array.isArray(parsed.weaknesses)
+    weaknesses: Array.isArray(
+      parsed.weaknesses
+    )
       ? parsed.weaknesses.filter(
           (item: unknown): item is string =>
             typeof item === "string"
@@ -85,11 +269,18 @@ function parseEvaluation(text: string): EvaluationResult {
   };
 }
 
-async function getTeacher(clerkId: string) {
+// =========================================
+// TEACHER HELPER
+// =========================================
+
+async function getTeacher(
+  clerkId: string
+) {
   const user = await prisma.user.findUnique({
     where: {
       clerkId,
     },
+
     include: {
       teacherProfile: {
         include: {
@@ -109,9 +300,28 @@ async function getTeacher(clerkId: string) {
   };
 }
 
-// -----------------------------------------
-// GEMINI INTERVIEW EVALUATION
-// -----------------------------------------
+// =========================================
+// BUILD EVALUATION CONVERSATION
+// =========================================
+
+function buildConversation(
+  history: ChatMessage[]
+): string {
+  return history
+    .map((message) => {
+      const speaker =
+        message.role === "assistant"
+          ? "INTERVIEW QUESTION"
+          : "TEACHER RESPONSE";
+
+      return `${speaker}:\n${message.content}`;
+    })
+    .join("\n\n");
+}
+
+// =========================================
+// GEMINI EVALUATION
+// =========================================
 
 async function evaluateInterview(
   interviewId: string,
@@ -119,49 +329,128 @@ async function evaluateInterview(
   subjects: string[]
 ) {
   try {
-    const conversation = history
-      .map((message) => {
-        const speaker =
-          message.role === "assistant"
-            ? "AI Interviewer"
-            : "Teacher";
+    console.info(
+      `[AI Interview] Starting evaluation: ${interviewId}`
+    );
 
-        return `${speaker}: ${message.content}`;
-      })
-      .join("\n\n");
+    const teacherAnswers = history.filter(
+      (message) => message.role === "user"
+    );
+
+    const conversation =
+      buildConversation(history);
+
+    const model = getGeminiModel();
 
     const prompt = `
-You are an experienced professional teacher recruitment evaluator for TutorSathi.
+You are a senior teacher recruitment evaluator for TutorSathi, an Indian EdTech platform.
 
-Evaluate the teacher's interview based ONLY on the conversation below.
+Your responsibility is to evaluate a college student's ability to teach school students.
 
-Teacher's subjects:
-${subjects.length ? subjects.join(", ") : "Not specified"}
+The candidate completed a structured five-minute teacher interview.
 
-Interview conversation:
-${conversation || "The teacher submitted the interview without providing any answers."}
+CANDIDATE'S REGISTERED SUBJECTS:
+${
+  subjects.length
+    ? subjects.join(", ")
+    : "Not specified"
+}
 
-Evaluate these four categories on a scale of 0 to 10:
+NUMBER OF TEACHER RESPONSES:
+${teacherAnswers.length}
 
-1. subjectKnowledge:
-Evaluate subject understanding, accuracy, and depth.
+INTERVIEW CONVERSATION:
 
-2. communication:
-Evaluate clarity, confidence, language, and ability to communicate ideas.
+${conversation || "No interview responses were submitted."}
 
-3. explanationSkills:
-Evaluate the ability to explain concepts in a structured, understandable way.
+==================================================
+INTERVIEW STRUCTURE
+==================================================
 
-4. overallScore:
-Give an overall score based on the complete interview.
+The interview contains five predefined stages:
 
-Be fair and professional.
-Do not invent information.
-Do not penalize the candidate for answers that were never asked.
-If the conversation is too short or contains no teacher answers, reflect that limitation in the evaluation.
-Do not award high scores without supporting evidence.
+1. SELF INTRODUCTION
+The candidate introduces themselves and describes their educational background.
 
-Return ONLY valid JSON in this exact format:
+2. TEACHING MOTIVATION
+The candidate explains why they want to teach and their interest in helping students.
+
+3. SUBJECTS AND CLASSES
+The candidate identifies their teaching subjects, preferred classes and strongest subject.
+
+4. TOPIC SELECTION
+The candidate selects a topic and explains why they chose it.
+
+5. TEACHING DEMONSTRATION
+The candidate teaches the selected topic as if explaining it to a school student.
+
+==================================================
+EVALUATION CRITERIA
+==================================================
+
+Evaluate the candidate on a scale of 0 to 10.
+
+1. subjectKnowledge
+
+Evaluate:
+- Understanding of the selected subject.
+- Accuracy of concepts.
+- Correctness of examples.
+- Depth of subject understanding.
+- Ability to explain the selected topic correctly.
+
+2. communication
+
+Evaluate:
+- Clarity of communication.
+- Ability to express ideas.
+- Language and sentence structure.
+- Confidence reflected in the response.
+- Ability to communicate with school students.
+
+3. explanationSkills
+
+Evaluate:
+- Step-by-step explanation.
+- Simplicity of teaching.
+- Use of examples and practical applications.
+- Logical flow of concepts.
+- Ability to make difficult topics understandable.
+
+4. overallScore
+
+Give an overall score considering all available responses.
+
+Suggested weighting:
+
+- Subject knowledge: 25%
+- Communication: 20%
+- Explanation skills: 40%
+- Interview completeness and teaching motivation: 15%
+
+==================================================
+IMPORTANT EVALUATION RULES
+==================================================
+
+- Be fair, objective and professional.
+- Evaluate only the evidence in the submitted conversation.
+- Never invent information about the candidate.
+- Give special importance to the teaching demonstration.
+- A good introduction alone must not result in a high score.
+- Reward simple explanations and relevant examples.
+- Penalize incorrect subject information.
+- Do not confuse the interview questions with candidate answers.
+- Do not award high scores without supporting evidence.
+- If the candidate did not complete the teaching demonstration, reflect this in the score.
+- If there are no teacher responses, assign zero scores.
+- Do not assume that a candidate is confident based only on their written words.
+- This evaluation is based on the available response transcript, not independently verified video or audio analysis.
+- Keep strengths and weaknesses specific and useful.
+- Scores must be between 0 and 10.
+
+Return ONLY valid JSON.
+
+Use exactly this structure:
 
 {
   "subjectKnowledge": 7.5,
@@ -169,17 +458,19 @@ Return ONLY valid JSON in this exact format:
   "explanationSkills": 7,
   "overallScore": 7.5,
   "strengths": [
-    "Clear communication",
-    "Good understanding of core concepts"
+    "Demonstrates a good understanding of the selected topic",
+    "Uses relevant examples while explaining concepts"
   ],
   "weaknesses": [
+    "Could improve the structure of explanations",
     "Could provide more practical examples"
   ],
-  "summary": "A concise and professional overall assessment."
+  "summary": "A concise and professional overall assessment of the candidate's teaching ability."
 }
 `;
 
-    const result = await model.generateContent(prompt);
+    const result =
+      await model.generateContent(prompt);
 
     const evaluation = parseEvaluation(
       result.response.text()
@@ -192,24 +483,53 @@ Return ONLY valid JSON in this exact format:
 
       create: {
         interviewId,
-        subjectKnowledge: evaluation.subjectKnowledge,
-        communication: evaluation.communication,
-        explanationSkills: evaluation.explanationSkills,
-        overallScore: evaluation.overallScore,
-        strengths: evaluation.strengths,
-        weaknesses: evaluation.weaknesses,
-        summary: evaluation.summary,
+
+        subjectKnowledge:
+          evaluation.subjectKnowledge,
+
+        communication:
+          evaluation.communication,
+
+        explanationSkills:
+          evaluation.explanationSkills,
+
+        overallScore:
+          evaluation.overallScore,
+
+        strengths:
+          evaluation.strengths,
+
+        weaknesses:
+          evaluation.weaknesses,
+
+        summary:
+          evaluation.summary,
+
         fullReport: evaluation as never,
       },
 
       update: {
-        subjectKnowledge: evaluation.subjectKnowledge,
-        communication: evaluation.communication,
-        explanationSkills: evaluation.explanationSkills,
-        overallScore: evaluation.overallScore,
-        strengths: evaluation.strengths,
-        weaknesses: evaluation.weaknesses,
-        summary: evaluation.summary,
+        subjectKnowledge:
+          evaluation.subjectKnowledge,
+
+        communication:
+          evaluation.communication,
+
+        explanationSkills:
+          evaluation.explanationSkills,
+
+        overallScore:
+          evaluation.overallScore,
+
+        strengths:
+          evaluation.strengths,
+
+        weaknesses:
+          evaluation.weaknesses,
+
+        summary:
+          evaluation.summary,
+
         fullReport: evaluation as never,
       },
     });
@@ -219,17 +539,66 @@ Return ONLY valid JSON in this exact format:
     );
   } catch (error) {
     console.error(
-      `[AI Interview] Evaluation failed for ${interviewId}:`,
+      `[AI Interview] Evaluation failed: ${interviewId}`,
       error
     );
   }
 }
 
 // =========================================
+// COMPLETE INTERVIEW
+// =========================================
+
+async function completeInterview(
+  interviewId: string,
+  teacherId: string,
+  history: ChatMessage[],
+  subjects: string[]
+) {
+  await prisma.$transaction([
+    prisma.aIInterview.update({
+      where: {
+        id: interviewId,
+      },
+
+      data: {
+        status: "completed",
+        completedAt: new Date(),
+
+        rawResponses: {
+          history,
+        },
+      },
+    }),
+
+    prisma.teacherProfile.update({
+      where: {
+        id: teacherId,
+      },
+
+      data: {
+        verificationStatus: "UNDER_REVIEW",
+      },
+    }),
+  ]);
+
+  // Evaluation runs after the response is sent.
+  after(async () => {
+    await evaluateInterview(
+      interviewId,
+      history,
+      subjects
+    );
+  });
+}
+
+// =========================================
 // POST - START / CHAT / FINISH
 // =========================================
 
-export async function POST(request: NextRequest) {
+export async function POST(
+  request: NextRequest
+) {
   try {
     const { userId: clerkId } = await auth();
 
@@ -243,17 +612,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return jsonResponse(
-        {
-          success: false,
-          message: "AI interview service is not configured.",
-        },
-        500
-      );
-    }
-
-    const teacherData = await getTeacher(clerkId);
+    const teacherData =
+      await getTeacher(clerkId);
 
     if (!teacherData) {
       return jsonResponse(
@@ -268,11 +628,17 @@ export async function POST(request: NextRequest) {
     const { teacher } = teacherData;
 
     const body = await request.json();
+
     const { action } = body;
 
-    // -----------------------------------------
+    const subjectNames =
+      teacher.subjects.map(
+        (subject) => subject.subject
+      );
+
+    // =====================================
     // START INTERVIEW
-    // -----------------------------------------
+    // =====================================
 
     if (action === "start") {
       const previousInterview =
@@ -281,87 +647,121 @@ export async function POST(request: NextRequest) {
             teacherId: teacher.id,
             status: "in_progress",
           },
+
           orderBy: {
             createdAt: "desc",
           },
         });
 
+      // Resume an active interview.
       if (previousInterview) {
-        return jsonResponse({
-          success: true,
-          interviewId: previousInterview.id,
-          message:
-            "You already have an interview in progress.",
-          resumed: true,
-        });
-      }
+        const time = getRemainingTime(
+          previousInterview.startedAt
+        );
 
-      const subjectNames = teacher.subjects.map(
-        (subject) => subject.subject
-      );
+        if (!time.expired) {
+          const history = getHistory(
+            previousInterview.rawResponses
+          );
 
-      const prompt = `
-You are TutorSathi's professional AI teacher interviewer.
+          const questionCount =
+            getQuestionCount(history);
 
-You are interviewing a teacher who wants to join the TutorSathi teaching platform.
+          return jsonResponse({
+            success: true,
 
-Teacher's subjects:
-${subjectNames.length
-          ? subjectNames.join(", ")
-          : "Not specified"
+            interviewId:
+              previousInterview.id,
+
+            message:
+              "Your interview has been restored.",
+
+            resumed: true,
+
+            history,
+
+            remainingSeconds:
+              time.remainingSeconds,
+
+            questionCount,
+
+            maxQuestions:
+              MAX_INTERVIEW_QUESTIONS,
+
+            durationMinutes:
+              INTERVIEW_DURATION_MINUTES,
+
+            questions:
+              INTERVIEW_QUESTIONS,
+          });
         }
 
-Instructions:
-- Greet the teacher professionally and warmly.
-- Introduce yourself as the TutorSathi AI interviewer.
-- Ask one question at a time.
-- Keep questions natural and conversational.
-- Focus on teaching ability, subject knowledge, and explanation skills.
-- Ask questions relevant to the teacher's subjects.
-- Do not ask multiple questions in one message.
-- Do not provide the answer to your own question.
-- Avoid repeating previous questions.
+        // Complete expired interview.
+        const expiredHistory = getHistory(
+          previousInterview.rawResponses
+        );
 
-Start the interview with a brief introduction and your first question.
-`;
-
-      const result = await model.generateContent(prompt);
-
-      const firstMessage = result.response.text().trim();
-
-      if (!firstMessage) {
-        throw new Error(
-          "Gemini did not generate an opening question."
+        await completeInterview(
+          previousInterview.id,
+          teacher.id,
+          expiredHistory,
+          subjectNames
         );
       }
 
-      const interview = await prisma.aIInterview.create({
-        data: {
-          teacherId: teacher.id,
-          status: "in_progress",
-          startedAt: new Date(),
-          rawResponses: {
-            history: [
-              {
-                role: "assistant",
-                content: firstMessage,
-              },
-            ],
+      // No Gemini call here.
+      const firstMessage =
+        INTERVIEW_QUESTIONS[0].question;
+
+      const interview =
+        await prisma.aIInterview.create({
+          data: {
+            teacherId: teacher.id,
+
+            status: "in_progress",
+
+            startedAt: new Date(),
+
+            rawResponses: {
+              history: [
+                {
+                  role: "assistant",
+                  content: firstMessage,
+                },
+              ],
+            },
           },
-        },
-      });
+        });
 
       return jsonResponse({
         success: true,
+
         interviewId: interview.id,
+
         message: firstMessage,
+
         resumed: false,
+
+        durationMinutes:
+          INTERVIEW_DURATION_MINUTES,
+
+        remainingSeconds:
+          INTERVIEW_DURATION_MINUTES * 60,
+
+        questionCount: 1,
+
+        maxQuestions:
+          MAX_INTERVIEW_QUESTIONS,
+
+        questions:
+          INTERVIEW_QUESTIONS,
       });
     }
 
-    // -----------------------------------------
-    // CHAT / NEXT QUESTION
-    // -----------------------------------------
+    // =====================================
+    // CHAT - SAVE ANSWER AND RETURN FIXED
+    // NEXT QUESTION
+    // =====================================
 
     if (action === "chat") {
       const { interviewId, message } = body;
@@ -374,7 +774,8 @@ Start the interview with a brief introduction and your first question.
         return jsonResponse(
           {
             success: false,
-            message: "Interview ID and answer are required.",
+            message:
+              "Interview ID and answer are required.",
           },
           400
         );
@@ -393,19 +794,20 @@ Start the interview with a brief introduction and your first question.
         return jsonResponse(
           {
             success: false,
-            message: "Active interview not found.",
+            message:
+              "Active interview not found.",
           },
           404
         );
       }
 
-      const storedResponses =
-        interview.rawResponses as {
-          history?: ChatMessage[];
-        } | null;
+      const history = getHistory(
+        interview.rawResponses
+      );
 
-      const history: ChatMessage[] =
-        storedResponses?.history ?? [];
+      const time = getRemainingTime(
+        interview.startedAt
+      );
 
       const updatedHistory: ChatMessage[] = [
         ...history,
@@ -415,62 +817,105 @@ Start the interview with a brief introduction and your first question.
         },
       ];
 
-      const subjectNames = teacher.subjects.map(
-        (subject) => subject.subject
-      );
+      // ---------------------------------
+      // TIME EXPIRED
+      // ---------------------------------
 
-      const conversation = updatedHistory
-        .map(
-          (item) =>
-            `${item.role}: ${item.content}`
-        )
-        .join("\n\n");
-
-      const prompt = `
-You are TutorSathi's professional AI teacher interviewer.
-
-Teacher's subjects:
-${subjectNames.length
-          ? subjectNames.join(", ")
-          : "Not specified"
-        }
-
-Interview conversation so far:
-${conversation}
-
-Your task:
-- Respond naturally to the teacher's latest answer.
-- Briefly acknowledge the answer when appropriate.
-- Ask exactly ONE relevant follow-up interview question.
-- Evaluate the teacher's subject knowledge and teaching ability through questions.
-- Ask practical teaching scenario questions when appropriate.
-- Do not repeat previous questions.
-- Do not reveal scores or evaluation results during the interview.
-- Do not ask multiple questions at once.
-- Keep your response concise and conversational.
-
-Respond as the AI interviewer.
-`;
-
-      const result = await model.generateContent(prompt);
-
-      const nextMessage = result.response.text().trim();
-
-      if (!nextMessage) {
-        throw new Error(
-          "Gemini did not generate the next question."
+      if (time.expired) {
+        await completeInterview(
+          interviewId,
+          teacher.id,
+          updatedHistory,
+          subjectNames
         );
+
+        return jsonResponse({
+          success: true,
+
+          interviewCompleted: true,
+
+          evaluationPending: true,
+
+          message:
+            "Your interview time has ended. Your responses have been submitted for evaluation.",
+
+          questionCount:
+            getQuestionCount(history),
+
+          maxQuestions:
+            MAX_INTERVIEW_QUESTIONS,
+        });
+      }
+
+      // ---------------------------------
+      // FIND NEXT FIXED QUESTION
+      // ---------------------------------
+
+      const answeredCount =
+        getAnswerCount(updatedHistory);
+
+      // All five questions have been answered.
+      if (
+        answeredCount >=
+        MAX_INTERVIEW_QUESTIONS
+      ) {
+        await completeInterview(
+          interviewId,
+          teacher.id,
+          updatedHistory,
+          subjectNames
+        );
+
+        return jsonResponse({
+          success: true,
+
+          interviewCompleted: true,
+
+          evaluationPending: true,
+
+          message:
+            "Thank you! You have completed all five stages of your TutorSathi teaching interview. Your responses are now being evaluated.",
+
+          questionCount:
+            MAX_INTERVIEW_QUESTIONS,
+
+          maxQuestions:
+            MAX_INTERVIEW_QUESTIONS,
+        });
+      }
+
+      // The next question is selected locally.
+      // No Gemini request is made here.
+      const nextQuestion =
+        INTERVIEW_QUESTIONS[answeredCount];
+
+      if (!nextQuestion) {
+        await completeInterview(
+          interviewId,
+          teacher.id,
+          updatedHistory,
+          subjectNames
+        );
+
+        return jsonResponse({
+          success: true,
+          interviewCompleted: true,
+          evaluationPending: true,
+          message:
+            "Your interview has been submitted for evaluation.",
+        });
       }
 
       updatedHistory.push({
         role: "assistant",
-        content: nextMessage,
+        content: nextQuestion.question,
       });
 
       await prisma.aIInterview.update({
         where: {
           id: interviewId,
         },
+
         data: {
           rawResponses: {
             history: updatedHistory,
@@ -478,26 +923,49 @@ Respond as the AI interviewer.
         },
       });
 
+      const updatedTime =
+        getRemainingTime(
+          interview.startedAt
+        );
+
       return jsonResponse({
         success: true,
-        message: nextMessage,
+
+        message: nextQuestion.question,
+
         history: updatedHistory,
+
+        questionCount:
+          getQuestionCount(updatedHistory),
+
+        answerCount: answeredCount,
+
+        maxQuestions:
+          MAX_INTERVIEW_QUESTIONS,
+
+        remainingSeconds:
+          updatedTime.remainingSeconds,
+
+        durationMinutes:
+          INTERVIEW_DURATION_MINUTES,
+
+        stage: nextQuestion.stage,
       });
     }
 
-    // -----------------------------------------
+    // =====================================
     // FINISH INTERVIEW
-    // NO MINIMUM ANSWER VALIDATION
-    // -----------------------------------------
+    // =====================================
 
     if (action === "finish") {
-      const { interviewId } = body;
+      const { interviewId, transcript } = body;
 
       if (typeof interviewId !== "string") {
         return jsonResponse(
           {
             success: false,
-            message: "Interview ID is required.",
+            message:
+              "Interview ID is required.",
           },
           400
         );
@@ -516,64 +984,68 @@ Respond as the AI interviewer.
         return jsonResponse(
           {
             success: false,
-            message: "Active interview not found.",
+            message:
+              "Active interview not found.",
           },
           404
         );
       }
 
-      const storedResponses =
-        interview.rawResponses as {
-          history?: ChatMessage[];
-        } | null;
-
-      const history: ChatMessage[] =
-        storedResponses?.history ?? [];
-
-      // No answer-count validation.
-      // Teachers can submit even with zero answers.
-
-      await prisma.$transaction([
-        prisma.aIInterview.update({
-          where: {
-            id: interviewId,
-          },
-          data: {
-            status: "completed",
-            completedAt: new Date(),
-          },
-        }),
-
-        prisma.teacherProfile.update({
-          where: {
-            id: teacher.id,
-          },
-          data: {
-            verificationStatus: "UNDER_REVIEW",
-          },
-        }),
-      ]);
-
-      const subjectNames = teacher.subjects.map(
-        (subject) => subject.subject
+      let history = getHistory(
+        interview.rawResponses
       );
 
-      // Run evaluation after the response has been sent.
-      after(async () => {
-        await evaluateInterview(
-          interviewId,
-          history,
-          subjectNames
-        );
-      });
+      // Optional final transcript from the frontend.
+      // This can preserve the final speech-recognition
+      // result if it was not already submitted through chat.
+      if (
+        typeof transcript === "string" &&
+        transcript.trim()
+      ) {
+        const lastMessage =
+          history[history.length - 1];
+
+        if (
+          lastMessage?.role === "user"
+        ) {
+          history = [
+            ...history.slice(0, -1),
+            {
+              role: "user",
+              content: transcript.trim(),
+            },
+          ];
+        } else {
+          history = [
+            ...history,
+            {
+              role: "user",
+              content: transcript.trim(),
+            },
+          ];
+        }
+      }
+
+      await completeInterview(
+        interviewId,
+        teacher.id,
+        history,
+        subjectNames
+      );
 
       return jsonResponse({
         success: true,
+
         submitted: true,
+
+        interviewCompleted: true,
+
         interviewId,
+
         evaluationPending: true,
+
         message:
-          "Your interview has been submitted. Gemini is evaluating your responses.",
+          "Your interview has been submitted. Gemini is now evaluating your responses.",
       });
     }
 
@@ -585,11 +1057,15 @@ Respond as the AI interviewer.
       400
     );
   } catch (error) {
-    console.error("[AI Interview POST]", error);
+    console.error(
+      "[AI Interview POST]",
+      error
+    );
 
     return jsonResponse(
       {
         success: false,
+
         message:
           error instanceof Error
             ? error.message
@@ -604,7 +1080,9 @@ Respond as the AI interviewer.
 // GET - INTERVIEW STATUS / EVALUATION
 // =========================================
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest
+) {
   try {
     const { userId: clerkId } = await auth();
 
@@ -618,13 +1096,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const teacherData = await getTeacher(clerkId);
+    const teacherData =
+      await getTeacher(clerkId);
 
     if (!teacherData) {
       return jsonResponse(
         {
           success: false,
-          message: "Teacher profile not found.",
+          message:
+            "Teacher profile not found.",
         },
         404
       );
@@ -632,21 +1112,26 @@ export async function GET(request: NextRequest) {
 
     const { teacher } = teacherData;
 
-    const { searchParams } = new URL(request.url);
+    const { searchParams } =
+      new URL(request.url);
 
-    const action = searchParams.get("action");
-    const interviewId = searchParams.get("interviewId");
+    const action =
+      searchParams.get("action");
 
-    // -----------------------------------------
+    const interviewId =
+      searchParams.get("interviewId");
+
+    // =====================================
     // GET EVALUATION
-    // -----------------------------------------
+    // =====================================
 
     if (action === "evaluation") {
       if (!interviewId) {
         return jsonResponse(
           {
             success: false,
-            message: "Interview ID is required.",
+            message:
+              "Interview ID is required.",
           },
           400
         );
@@ -659,6 +1144,7 @@ export async function GET(request: NextRequest) {
             teacherId: teacher.id,
             status: "completed",
           },
+
           include: {
             evaluation: true,
           },
@@ -668,7 +1154,8 @@ export async function GET(request: NextRequest) {
         return jsonResponse(
           {
             success: false,
-            message: "Completed interview not found.",
+            message:
+              "Completed interview not found.",
           },
           404
         );
@@ -677,44 +1164,68 @@ export async function GET(request: NextRequest) {
       if (!interview.evaluation) {
         return jsonResponse({
           success: true,
+
           evaluationPending: true,
+
           status: "processing",
+
           message:
-            "Gemini is analyzing your interview. Your results will appear here shortly.",
+            "Gemini is evaluating your teaching interview. Your results will appear here shortly.",
         });
       }
 
-      const evaluation = interview.evaluation;
+      const evaluation =
+        interview.evaluation;
 
       return jsonResponse({
         success: true,
+
         evaluationPending: false,
+
         status: "completed",
+
         result: {
-          subjectKnowledge: evaluation.subjectKnowledge,
-          communication: evaluation.communication,
-          explanationSkills: evaluation.explanationSkills,
-          overallScore: evaluation.overallScore,
-          strengths: evaluation.strengths,
-          weaknesses: evaluation.weaknesses,
-          summary: evaluation.summary,
-          fullReport: evaluation.fullReport,
+          subjectKnowledge:
+            evaluation.subjectKnowledge,
+
+          communication:
+            evaluation.communication,
+
+          explanationSkills:
+            evaluation.explanationSkills,
+
+          overallScore:
+            evaluation.overallScore,
+
+          strengths:
+            evaluation.strengths,
+
+          weaknesses:
+            evaluation.weaknesses,
+
+          summary:
+            evaluation.summary,
+
+          fullReport:
+            evaluation.fullReport,
         },
       });
     }
 
-    // -----------------------------------------
+    // =====================================
     // GET LATEST INTERVIEW STATUS
-    // -----------------------------------------
+    // =====================================
 
     const interview =
       await prisma.aIInterview.findFirst({
         where: {
           teacherId: teacher.id,
         },
+
         orderBy: {
           createdAt: "desc",
         },
+
         include: {
           evaluation: true,
         },
@@ -723,34 +1234,88 @@ export async function GET(request: NextRequest) {
     if (!interview) {
       return jsonResponse({
         success: true,
+
         interview: null,
+
         interviewId: null,
+
         status: null,
+
         recordingAvailable: false,
+
+        durationMinutes:
+          INTERVIEW_DURATION_MINUTES,
       });
     }
 
-  return jsonResponse({
-  success: true,
-  interview: {
-    id: interview.id,
-    status: interview.status,
-    startedAt: interview.startedAt,
-    completedAt: interview.completedAt,
-    recordingUrl: interview.recordingUrl,
-  },
-  interviewId: interview.id,
-  status: interview.status,
-  recordingUrl: interview.recordingUrl,
-  recordingAvailable: Boolean(interview.recordingUrl),
-  evaluationAvailable: Boolean(interview.evaluation),
-});
+    const history = getHistory(
+      interview.rawResponses
+    );
+
+    const time =
+      interview.status === "in_progress"
+        ? getRemainingTime(
+            interview.startedAt
+          )
+        : null;
+
+    return jsonResponse({
+      success: true,
+
+      interview: {
+        id: interview.id,
+
+        status: interview.status,
+
+        startedAt: interview.startedAt,
+
+        completedAt: interview.completedAt,
+
+        recordingUrl:
+          interview.recordingUrl,
+      },
+
+      interviewId: interview.id,
+
+      status: interview.status,
+
+      recordingUrl:
+        interview.recordingUrl,
+
+      recordingAvailable:
+        Boolean(interview.recordingUrl),
+
+      evaluationAvailable:
+        Boolean(interview.evaluation),
+
+      questionCount:
+        getQuestionCount(history),
+
+      answerCount:
+        getAnswerCount(history),
+
+      maxQuestions:
+        MAX_INTERVIEW_QUESTIONS,
+
+      durationMinutes:
+        INTERVIEW_DURATION_MINUTES,
+
+      remainingSeconds:
+        time?.remainingSeconds ?? 0,
+
+      timeExpired:
+        time?.expired ?? false,
+    });
   } catch (error) {
-    console.error("[AI Interview GET]", error);
+    console.error(
+      "[AI Interview GET]",
+      error
+    );
 
     return jsonResponse(
       {
         success: false,
+
         message:
           error instanceof Error
             ? error.message
