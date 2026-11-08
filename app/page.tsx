@@ -3,7 +3,7 @@ import Navbar from "@/components/home/Navbar";
 import Hero from "@/components/home/Hero";
 import FindYourTutor from "@/components/home/FindTutors";
 import HowItWorks from "@/components/home/HowItWorks";
-import WhyTeachMate from "@/components/home/WhyTeachMate";
+import WhyTutorSathi from "@/components/home/WhyTeachMate";
 import FinalCTA from "@/components/home/FinalCTA";
 import Verification from "@/components/home/Verification";
 import Footer from "@/components/home/Footer";
@@ -17,9 +17,11 @@ export default function HomePage() {
       <main className="relative z-10">
         <Hero />
         <FindYourTutor />
-        <WhyTeachMate/>
-        <HowItWorks/>
-        <Verification/>
+          <Verification/>
+           <HowItWorks/>
+        <WhyTutorSathi/>
+       
+      
         <FinalCTA/>
         <Footer/>
         

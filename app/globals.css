@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* =========================================================
-   TEACHMATE — GLOBAL DESIGN SYSTEM
+   TutorSathi — GLOBAL DESIGN SYSTEM
    Dark-only • Tailwind CSS 4 • shadcn/ui compatible
 ========================================================= */
 
@@ -98,7 +98,7 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.7 0.18 265);
 
-  /* TeachMate visual tokens */
+  /* TutorSathi visual tokens */
   --tm-bg: #080b14;
   --tm-bg-soft: #0d1220;
   --tm-surface: rgba(17, 24, 39, 0.72);
@@ -1807,7 +1807,7 @@ section {
 .tutor-modal-content .btn { margin-top: 8px; }
 
 /* -------------------- Utility -------------------- */
-#teachmate-page {
+#TutorSathi-page {
   position: relative;
   min-height: 100vh;
 }
@@ -1815,7 +1815,7 @@ section {
   will-change: transform;
 }
 /* =========================================================
-   TEACHMATE — PREMIUM LIGHT DESIGN SYSTEM
+   TutorSathi — PREMIUM LIGHT DESIGN SYSTEM
    Tailwind CSS 4 • shadcn/ui compatible
    White + Cyan + Blue
 ========================================================= */
@@ -1868,7 +1868,7 @@ section {
 
   --radius: 0.75rem;
 
-  /* TeachMate light design tokens */
+  /* TutorSathi light design tokens */
   --tm-bg: #f8fbff;
   --tm-bg-soft: #f0f7fc;
 

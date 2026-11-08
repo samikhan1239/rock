@@ -122,7 +122,7 @@ function VerificationSeal() {
         </motion.div>
 
         <p className="text-[10px] font-medium tracking-[0.4em] text-cyan-300">
-          TEACHMATE
+          TutorSathi
         </p>
 
         <h3 className="mt-1 text-2xl font-bold tracking-widest text-white">
@@ -208,7 +208,7 @@ function VerificationHero() {
         >
           <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/[0.07] px-4 py-2 text-xs font-medium tracking-wider text-cyan-300">
             <ShieldCheck size={15} />
-            THE TEACHMATE TRUST SYSTEM
+            THE TutorSathi TRUST SYSTEM
           </div>
 
           <h1 className="text-5xl font-semibold leading-[1.08] tracking-tight text-white sm:text-6xl lg:text-[76px]">
@@ -470,7 +470,7 @@ function TrustStatement() {
         </div>
 
         <p className="mb-6 text-xs font-semibold tracking-[0.3em] text-cyan-300">
-          THE TEACHMATE PROMISE
+          THE TutorSathi PROMISE
         </p>
 
         <h2 className="text-4xl font-semibold leading-tight text-white sm:text-6xl lg:text-7xl">
@@ -484,7 +484,7 @@ function TrustStatement() {
         <p className="mx-auto mt-7 max-w-2xl text-base leading-8 text-slate-400">
           We believe every student deserves an educator they
           can trust. Thats why we put verification at the
-          heart of the TeachMate experience.
+          heart of the TutorSathi experience.
         </p>
 
         <a

@@ -164,7 +164,7 @@ function StackingPanel({
       {/* Bottom information */}
       <div className="flex items-center justify-between border-t border-white/10 pt-5">
         <span className="text-xs tracking-wider text-white/40">
-          WHY TEACHMATE
+          WHY TutorSathi
         </span>
 
         <span className="flex items-center gap-2 text-xs text-white/50">
@@ -231,7 +231,7 @@ function ProgressFill({
   );
 }
 
-export default function WhyTeachMate() {
+export default function WhyTutorSathi() {
   const sectionRef = useRef<HTMLElement>(null);
 
   const { scrollYProgress } = useScroll({
@@ -254,7 +254,7 @@ export default function WhyTeachMate() {
   return (
     <section
       ref={sectionRef}
-      id="why-teachmate"
+      id="why-TutorSathi"
       className="relative h-[270vh] bg-[#050914]"
     >
       <div className="sticky top-0 flex h-[100svh] min-h-[600px] flex-col justify-center overflow-hidden px-4 py-8 sm:px-8 lg:px-16">
@@ -271,7 +271,7 @@ export default function WhyTeachMate() {
             <span className="h-px w-8 bg-cyan-400" />
 
             <span className="text-xs font-semibold tracking-[0.25em] text-cyan-400">
-              THE TEACHMATE DIFFERENCE
+              THE TutorSathi DIFFERENCE
             </span>
           </div>
 

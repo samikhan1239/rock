@@ -56,7 +56,7 @@ export default function Footer() {
         {/* Bottom line */}
         <div className="mt-6 flex flex-col items-center justify-between gap-2 border-t border-white/[0.06] pt-5 text-[11px] text-slate-500 sm:flex-row">
           <p>
-            TeachMate. All rights reserved.
+            TutorSathi. All rights reserved.
           </p>
 
           <p>

@@ -131,7 +131,7 @@ export default function HowItWorks() {
                         style={{ backgroundColor: step.accent }}
                       />
                       <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-white/70">
-                        How TeachMate works
+                        How TutorSathi works
                       </span>
                     </div>
 

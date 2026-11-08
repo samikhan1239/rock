@@ -9,19 +9,22 @@ import {
   Users,
   Loader2,
   ArrowRight,
-  ArrowUpRight,
   Check,
   ShieldCheck,
   BookOpen,
   Sparkles,
+  BadgeCheck,
+  ArrowUpRight,
 } from "lucide-react";
+
+type Role = "TEACHER" | "CLIENT";
 
 export default function SelectRolePage() {
   const router = useRouter();
   const { user, isLoaded } = useUser();
 
-  const [loading, setLoading] = useState<"TEACHER" | "CLIENT" | null>(null);
-  const [selectedRole, setSelectedRole] = useState<"TEACHER" | "CLIENT" | null>(null);
+  const [loading, setLoading] = useState<Role | null>(null);
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -29,13 +32,19 @@ export default function SelectRolePage() {
 
     const existingRole = user.publicMetadata?.role as string | undefined;
 
-    if (existingRole === "TEACHER") router.replace("/teacher");
-    else if (existingRole === "CLIENT") router.replace("/client");
-    else if (existingRole === "ADMIN") router.replace("/admin");
-    else if (existingRole === "SUPER_ADMIN") router.replace("/super-admin");
+    const routes: Record<string, string> = {
+      TEACHER: "/teacher",
+      CLIENT: "/client",
+      ADMIN: "/admin",
+      SUPER_ADMIN: "/super-admin",
+    };
+
+    if (existingRole && routes[existingRole]) {
+      router.replace(routes[existingRole]);
+    }
   }, [isLoaded, user, router]);
 
-  const selectRole = async (role: "TEACHER" | "CLIENT") => {
+  const selectRole = async (role: Role) => {
     if (!user) {
       setError("User not loaded. Please refresh the page.");
       return;
@@ -45,13 +54,15 @@ export default function SelectRolePage() {
     setLoading(role);
     setError("");
 
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
+    try {
       const res = await fetch("/api/auth/set-role", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ role }),
         signal: controller.signal,
       });
@@ -61,268 +72,334 @@ export default function SelectRolePage() {
       const contentType = res.headers.get("content-type") || "";
 
       if (!contentType.includes("application/json")) {
-        throw new Error("Server returned invalid response. Check API route.");
+        throw new Error("Invalid server response. Please try again.");
       }
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to set role");
+        throw new Error(data.error || "Failed to set your account role.");
       }
 
       await user.reload();
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
-      if (role === "TEACHER") {
-        router.replace("/teacher/onboarding");
-      } else {
-        router.replace("/client");
-      }
+      router.replace(
+        role === "TEACHER" ? "/teacher/onboarding" : "/client"
+      );
+      router.refresh();
     } catch (err: unknown) {
+      clearTimeout(timeout);
+
       console.error("Select role error:", err);
 
-      if (err instanceof Error) {
-        setError(
-          err.name === "AbortError"
+      setError(
+        err instanceof Error
+          ? err.name === "AbortError"
             ? "Request timed out. Please try again."
             : err.message
-        );
-      } else {
-        setError("Something went wrong. Please try again.");
-      }
+          : "Something went wrong. Please try again."
+      );
 
       setLoading(null);
       setSelectedRole(null);
     }
   };
 
-  if (!isLoaded) {
+  if (!isLoaded || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
-        <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
+      <div className="flex min-h-screen items-center justify-center bg-[#F5F7FF]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-200">
+            <GraduationCap className="h-6 w-6 text-white" />
+          </div>
+          <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
+          <p className="text-sm text-slate-500">
+            Preparing your account...
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-white flex flex-col lg:flex-row">
-
+    <main className="flex min-h-screen flex-col bg-white lg:flex-row">
       {/* LEFT BRANDING SECTION */}
-      <section className="relative lg:w-[46%] bg-[#101828] text-white overflow-hidden flex flex-col justify-between min-h-[330px] lg:min-h-screen px-7 py-8 sm:px-12 lg:px-16 lg:py-12">
+      <section className="relative flex min-h-[300px] flex-col justify-between overflow-hidden bg-[#111B3D] px-7 py-7 text-white sm:px-12 lg:min-h-screen lg:w-[43%] lg:px-14 lg:py-10 xl:px-16">
+        {/* Background decorations */}
+        <div className="pointer-events-none absolute -right-32 -top-32 h-[420px] w-[420px] rounded-full bg-indigo-500/20 blur-[100px]" />
+        <div className="pointer-events-none absolute -bottom-40 -left-20 h-[400px] w-[400px] rounded-full bg-blue-500/20 blur-[100px]" />
 
-        {/* Background decoration */}
-        <div className="absolute -top-40 -right-32 w-[450px] h-[450px] rounded-full border border-white/[0.06]" />
-        <div className="absolute -top-24 -right-16 w-[320px] h-[320px] rounded-full border border-white/[0.06]" />
-        <div className="absolute bottom-[-180px] left-[-100px] w-[400px] h-[400px] rounded-full bg-emerald-500/[0.08] blur-[100px]" />
+        <div className="pointer-events-none absolute right-[-100px] top-24 h-[350px] w-[350px] rounded-full border border-white/[0.06]" />
+        <div className="pointer-events-none absolute right-[-50px] top-36 h-[250px] w-[250px] rounded-full border border-white/[0.06]" />
 
         {/* Brand */}
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center">
-            <GraduationCap className="w-6 h-6 text-white" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-500 shadow-lg shadow-indigo-900/30">
+            <GraduationCap className="h-6 w-6 text-white" />
           </div>
 
           <span className="text-xl font-bold tracking-tight">
-            Tutor<span className="text-emerald-400">Sathi</span>
+            Tutor<span className="text-indigo-400">Sathi</span>
           </span>
         </div>
 
         {/* Main Content */}
         <div className="relative z-10 max-w-lg py-12 lg:py-0">
-
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/[0.08] text-emerald-300 text-xs font-medium mb-8">
-            <Sparkles className="w-3.5 h-3.5" />
+          <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-indigo-400/20 bg-indigo-400/10 px-3.5 py-2 text-xs font-medium text-indigo-200">
+            <Sparkles className="h-3.5 w-3.5" />
             Your journey starts here
           </div>
 
-          <h1 className="text-4xl sm:text-5xl lg:text-[58px] font-semibold leading-[1.12] tracking-tight">
+          <h1 className="text-4xl font-semibold leading-[1.15] tracking-tight sm:text-5xl xl:text-[58px]">
             Great things
             <br />
             happen when
             <br />
-            <span className="text-emerald-400">we learn</span>
+            <span className="bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">
+              we learn
+            </span>
             <br />
             together.
           </h1>
 
-          <p className="mt-7 text-base sm:text-lg leading-8 text-slate-400 max-w-md">
+          <p className="mt-6 max-w-md text-sm leading-7 text-slate-300 sm:text-base">
             Whether you want to share your knowledge or find someone to guide
             you, there is a place for you at TutorSathi.
           </p>
 
-          {/* Feature indicators */}
-          <div className="mt-10 flex flex-wrap gap-x-7 gap-y-4 text-sm text-slate-300">
+          <div className="mt-9 flex flex-wrap gap-x-6 gap-y-4 text-sm text-slate-300">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              Verified profiles
+              <BadgeCheck className="h-4 w-4 text-blue-400" />
+              Verified educators
             </div>
 
             <div className="flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-emerald-400" />
+              <BookOpen className="h-4 w-4 text-blue-400" />
               Quality learning
             </div>
           </div>
 
+          {/* Trust indicator */}
+          <div className="mt-10 flex items-center gap-3 border-t border-white/10 pt-7">
+            <div className="flex -space-x-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#111B3D] bg-blue-500 text-xs font-semibold">
+                T
+              </div>
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#111B3D] bg-indigo-500 text-xs font-semibold">
+                S
+              </div>
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#111B3D] bg-violet-500 text-xs font-semibold">
+                P
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-white">
+                One platform, two possibilities
+              </p>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Teach what you know. Learn what you love.
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* Bottom */}
-        <div className="relative z-10 hidden lg:flex items-center justify-between text-xs text-slate-500">
-          <span>© {new Date().getFullYear()} TutorSathi</span>
+        {/* Footer */}
+        <div className="relative z-10 hidden items-center justify-between text-xs text-slate-400 lg:flex">
+          <span>© 2026 TutorSathi. All rights reserved.</span>
           <span>Learn. Teach. Grow.</span>
         </div>
       </section>
 
       {/* RIGHT ROLE SELECTION */}
-      <section className="flex-1 flex items-center justify-center px-6 py-14 sm:px-12 lg:px-16 xl:px-24 bg-[#F8FAFC]">
+      <section className="flex flex-1 items-center justify-center bg-[#F7F8FC] px-5 py-12 sm:px-10 lg:px-12 xl:px-20">
+        <div className="w-full max-w-[520px]">
+          {/* Heading */}
+          <div className="mb-9">
+            <div className="mb-5 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600">
+              <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
+              Account setup
+              <span className="text-slate-300">/</span>
+              <span className="text-slate-400">Step 01</span>
+            </div>
 
-        <div className="w-full max-w-xl">
-
-          <div className="mb-10">
-
-            <p className="text-sm font-semibold tracking-widest uppercase text-emerald-600 mb-4">
-              Account setup · Step 01
-            </p>
-
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#101828]">
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-[38px]">
               How will you use
               <br />
               TutorSathi?
             </h2>
 
-            <p className="mt-4 text-slate-500 leading-7">
-              Choose the option that best describes you. We will personalize
-              your experience accordingly.
+            <p className="mt-4 max-w-md text-sm leading-6 text-slate-500 sm:text-base">
+              Choose your account type to get started. You can personalize
+              your experience in the next steps.
             </p>
-
           </div>
 
+          {/* Error */}
           {error && (
             <div
               role="alert"
-              className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"
+              className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
             >
-              {error}
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>{error}</p>
             </div>
           )}
 
-          <div className="space-y-3">
-
-            {/* TEACHER OPTION */}
+          {/* Role options */}
+          <div className="space-y-4">
+            {/* Teacher */}
             <button
               type="button"
               disabled={loading !== null}
-              onClick={() => setSelectedRole("TEACHER")}
-              className={`group w-full flex items-center gap-5 text-left p-5 sm:p-6 rounded-2xl border-2 transition-all duration-200 ${
+              aria-pressed={selectedRole === "TEACHER"}
+              onClick={() => {
+                setSelectedRole("TEACHER");
+                setError("");
+              }}
+              className={`group relative flex w-full items-center gap-4 rounded-2xl border p-5 text-left transition-all duration-200 sm:p-6 ${
                 selectedRole === "TEACHER"
-                  ? "border-emerald-600 bg-emerald-50/70"
-                  : "border-slate-200 bg-white hover:border-emerald-300"
-              }`}
+                  ? "border-indigo-500 bg-indigo-50/70 shadow-[0_0_0_3px_rgba(79,70,229,0.08)]"
+                  : "border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md hover:shadow-slate-200/50"
+              } disabled:cursor-not-allowed disabled:opacity-60`}
             >
-              <div className={`w-14 h-14 shrink-0 rounded-xl flex items-center justify-center transition-colors ${
-                selectedRole === "TEACHER"
-                  ? "bg-emerald-600 text-white"
-                  : "bg-slate-100 text-slate-600 group-hover:bg-emerald-50 group-hover:text-emerald-600"
-              }`}>
-                <GraduationCap className="w-7 h-7" />
+              <div
+                className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                  selectedRole === "TEACHER"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100"
+                }`}
+              >
+                <GraduationCap className="h-7 w-7" />
               </div>
 
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-lg text-[#101828]">
-                  I want to teach
-                </h3>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-base font-semibold text-slate-900 sm:text-lg">
+                    I want to teach
+                  </h3>
 
-                <p className="text-sm text-slate-500 mt-1 leading-6">
+                  {selectedRole === "TEACHER" && (
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                      SELECTED
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-1 text-sm leading-6 text-slate-500">
                   Share your knowledge and discover teaching opportunities.
                 </p>
 
-                <span className="inline-block mt-3 text-xs font-semibold text-emerald-700">
+                <span className="mt-3 inline-block text-[10px] font-semibold tracking-wider text-indigo-600">
                   FOR TEACHERS & EDUCATORS
                 </span>
               </div>
 
-              <div className={`w-6 h-6 rounded-full border-2 shrink-0 flex items-center justify-center ${
-                selectedRole === "TEACHER"
-                  ? "border-emerald-600 bg-emerald-600 text-white"
-                  : "border-slate-300"
-              }`}>
-                {selectedRole === "TEACHER" && <Check className="w-4 h-4" />}
+              <div
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-all ${
+                  selectedRole === "TEACHER"
+                    ? "border-indigo-600 bg-indigo-600 text-white"
+                    : "border-slate-300 text-transparent group-hover:border-indigo-400"
+                }`}
+              >
+                <Check className="h-3.5 w-3.5" />
               </div>
             </button>
 
-            {/* CLIENT OPTION */}
+            {/* Client */}
             <button
               type="button"
               disabled={loading !== null}
-              onClick={() => setSelectedRole("CLIENT")}
-              className={`group w-full flex items-center gap-5 text-left p-5 sm:p-6 rounded-2xl border-2 transition-all duration-200 ${
+              aria-pressed={selectedRole === "CLIENT"}
+              onClick={() => {
+                setSelectedRole("CLIENT");
+                setError("");
+              }}
+              className={`group relative flex w-full items-center gap-4 rounded-2xl border p-5 text-left transition-all duration-200 sm:p-6 ${
                 selectedRole === "CLIENT"
-                  ? "border-emerald-600 bg-emerald-50/70"
-                  : "border-slate-200 bg-white hover:border-emerald-300"
-              }`}
+                  ? "border-indigo-500 bg-indigo-50/70 shadow-[0_0_0_3px_rgba(79,70,229,0.08)]"
+                  : "border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md hover:shadow-slate-200/50"
+              } disabled:cursor-not-allowed disabled:opacity-60`}
             >
-              <div className={`w-14 h-14 shrink-0 rounded-xl flex items-center justify-center transition-colors ${
-                selectedRole === "CLIENT"
-                  ? "bg-emerald-600 text-white"
-                  : "bg-slate-100 text-slate-600 group-hover:bg-emerald-50 group-hover:text-emerald-600"
-              }`}>
-                <Users className="w-7 h-7" />
+              <div
+                className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                  selectedRole === "CLIENT"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-blue-50 text-blue-600 group-hover:bg-blue-100"
+                }`}
+              >
+                <Users className="h-7 w-7" />
               </div>
 
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-lg text-[#101828]">
-                  I need a tutor
-                </h3>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-base font-semibold text-slate-900 sm:text-lg">
+                    I need a tutor
+                  </h3>
 
-                <p className="text-sm text-slate-500 mt-1 leading-6">
+                  {selectedRole === "CLIENT" && (
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                      SELECTED
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-1 text-sm leading-6 text-slate-500">
                   Find trusted educators for your learning needs.
                 </p>
 
-                <span className="inline-block mt-3 text-xs font-semibold text-emerald-700">
+                <span className="mt-3 inline-block text-[10px] font-semibold tracking-wider text-blue-600">
                   FOR STUDENTS & PARENTS
                 </span>
               </div>
 
-              <div className={`w-6 h-6 rounded-full border-2 shrink-0 flex items-center justify-center ${
-                selectedRole === "CLIENT"
-                  ? "border-emerald-600 bg-emerald-600 text-white"
-                  : "border-slate-300"
-              }`}>
-                {selectedRole === "CLIENT" && <Check className="w-4 h-4" />}
+              <div
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-all ${
+                  selectedRole === "CLIENT"
+                    ? "border-indigo-600 bg-indigo-600 text-white"
+                    : "border-slate-300 text-transparent group-hover:border-indigo-400"
+                }`}
+              >
+                <Check className="h-3.5 w-3.5" />
               </div>
             </button>
-
           </div>
 
-          {/* Continue Button */}
+          {/* Continue */}
           <Button
             disabled={!selectedRole || loading !== null}
-            onClick={() => selectedRole && selectRole(selectedRole)}
-            className="mt-7 w-full h-14 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-base font-semibold shadow-none transition-all disabled:opacity-40"
+            onClick={() => {
+              if (selectedRole) {
+                void selectRole(selectedRole);
+              }
+            }}
+            className="mt-7 h-12 w-full rounded-xl bg-indigo-600 text-sm font-semibold text-white shadow-sm shadow-indigo-200 transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loading ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Setting up your account...
               </>
             ) : (
               <>
                 Continue
-                <ArrowRight className="w-5 h-5 ml-2" />
+                <ArrowRight className="ml-2 h-4 w-4" />
               </>
             )}
           </Button>
 
+          {/* Security note */}
           <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-400">
-            <ShieldCheck className="w-4 h-4" />
+            <ShieldCheck className="h-4 w-4 text-indigo-500" />
             Your information is securely protected.
           </div>
 
-          <p className="mt-12 text-center text-xs text-slate-400 lg:hidden">
-            © {new Date().getFullYear()} TutorSathi. Learn. Teach. Grow.
+          {/* Footer */}
+          <p className="mt-10 text-center text-xs text-slate-400 lg:hidden">
+            © 2026 TutorSathi. All rights reserved.
           </p>
-
         </div>
       </section>
-
     </main>
   );
 }

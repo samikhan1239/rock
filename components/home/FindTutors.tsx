@@ -218,7 +218,7 @@ export default function FindYourTutor() {
                 href="#how-it-works"
                 className="group flex items-center gap-2 text-sm font-medium text-white/80 transition hover:text-cyan-300"
               >
-                Explore TeachMate
+                Explore TutorSathi
 
                 <ArrowDown
                   size={15}
