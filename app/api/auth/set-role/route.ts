@@ -34,6 +34,7 @@ export async function POST(req: Request) {
       include: {
         teacherProfile: true,
         clientProfile: true,
+        creditWallet: true,
       },
     });
 
@@ -44,6 +45,7 @@ export async function POST(req: Request) {
         include: {
           teacherProfile: true,
           clientProfile: true,
+          creditWallet: true,
         },
       });
     } else {
@@ -54,19 +56,72 @@ export async function POST(req: Request) {
           firstName: clerkUser.firstName,
           lastName: clerkUser.lastName,
           role,
-          creditWallet: {
-            create: {
-              freeCredits: 5,
-              purchasedCredits: 0,
-              reservedCredits: 0,
-              usedCredits: 0,
-            },
-          },
         },
         include: {
           teacherProfile: true,
           clientProfile: true,
+          creditWallet: true,
         },
+      });
+    }
+
+    // 3.1 Create signup wallet and transaction only once
+    if (!dbUser.creditWallet) {
+      const setting = await prisma.platformSetting.findUnique({
+        where: { key: "pricing_settings" },
+      });
+
+      const value = setting?.value as {
+        freeCreditsOnSignup?: number;
+      } | null;
+
+      const configuredCredits = Number(
+        value?.freeCreditsOnSignup ?? 5
+      );
+
+      const signupCredits =
+        Number.isInteger(configuredCredits) && configuredCredits >= 0
+          ? configuredCredits
+          : 5;
+
+      const referenceId = `SIGNUP_FREE_CREDITS_${dbUser.id}`;
+
+      await prisma.$transaction(async (tx) => {
+        // Check duplicate allocation
+        const existingTransaction =
+          await tx.creditTransaction.findUnique({
+            where: { referenceId },
+          });
+
+        if (existingTransaction) return;
+
+        const wallet = await tx.creditWallet.create({
+          data: {
+            userId: dbUser.id,
+            freeCredits: signupCredits,
+            purchasedCredits: 0,
+            reservedCredits: 0,
+            usedCredits: 0,
+          },
+        });
+
+        await tx.creditTransaction.create({
+          data: {
+            userId: dbUser.id,
+            type: "FREE_CREDIT",
+            amount: signupCredits,
+            balanceAfter: wallet.freeCredits,
+            referenceId,
+            description: "Free signup credits",
+            metadata: {
+              source: "SIGNUP",
+              role,
+            },
+          },
+        });
+      }, {
+        maxWait: 10000,
+        timeout: 30000,
       });
     }
 
