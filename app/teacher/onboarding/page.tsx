@@ -121,6 +121,10 @@ const steps = [
   },
 ];
 
+// ========================================
+// TYPES
+// ========================================
+
 type SavedFormData = {
   personal: PersonalData;
   education: EducationData;
@@ -130,6 +134,14 @@ type SavedFormData = {
 };
 
 type SaveStatus = "saved" | "saving" | "error";
+
+type PricingSettings = {
+  teacherRegistrationFee: number;
+  clientRegistrationFee: number;
+  freeCreditsOnSignup: number;
+  connectionCreditPrice: number;
+  creditPacks: unknown[];
+};
 
 // ========================================
 // INITIAL DATA
@@ -162,6 +174,66 @@ const initialTeachingInfo: TeachingInfo = {
 };
 
 // ========================================
+// PRICING VALIDATION
+// ========================================
+
+function parsePricingSettings(
+  value: unknown
+): PricingSettings {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    throw new Error("Invalid pricing response.");
+  }
+
+  const settings = value as Record<string, unknown>;
+
+  const fields = [
+    "teacherRegistrationFee",
+    "clientRegistrationFee",
+    "freeCreditsOnSignup",
+    "connectionCreditPrice",
+  ] as const;
+
+  const parsed: Record<string, number> = {};
+
+  for (const field of fields) {
+    const numberValue = Number(settings[field]);
+
+    if (
+      settings[field] === undefined ||
+      settings[field] === null ||
+      !Number.isFinite(numberValue) ||
+      numberValue < 0
+    ) {
+      throw new Error(
+        `Invalid pricing configuration: ${field}.`
+      );
+    }
+
+    parsed[field] = numberValue;
+  }
+
+  if (!Array.isArray(settings.creditPacks)) {
+    throw new Error("Invalid credit pack configuration.");
+  }
+
+  return {
+    teacherRegistrationFee:
+      parsed.teacherRegistrationFee,
+    clientRegistrationFee:
+      parsed.clientRegistrationFee,
+    freeCreditsOnSignup:
+      parsed.freeCreditsOnSignup,
+    connectionCreditPrice:
+      parsed.connectionCreditPrice,
+    creditPacks: settings.creditPacks,
+  };
+}
+
+// ========================================
 // COMPACT REGISTRATION PROGRESS
 // ========================================
 
@@ -181,7 +253,6 @@ function RegistrationProgress({
   return (
     <section className="border-b border-slate-200 bg-white">
       <div className="mx-auto max-w-5xl px-5 py-3 sm:px-8">
-
         <div className="mb-2.5 flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2 text-sm">
             <span className="shrink-0 font-semibold text-slate-900">
@@ -307,7 +378,6 @@ export default function TeacherOnboardingPage() {
       demo: false,
     });
 
-  // Prevent stale upload responses from updating newer selections.
   const uploadIdsRef = useRef<Record<FileField, number>>({
     profileImage: 0,
     introduction: 0,
@@ -341,12 +411,17 @@ export default function TeacherOnboardingPage() {
   });
 
   // --------------------------------------
-  // REGISTRATION STATE
+  // REGISTRATION / PRICING STATE
   // --------------------------------------
 
- const [registrationFee, setRegistrationFee] = useState(0);
-const [feeLoading, setFeeLoading] = useState(true);
-const [feeError, setFeeError] = useState("");
+  const [registrationFee, setRegistrationFee] =
+    useState<number | null>(null);
+
+  const [pricingSettings, setPricingSettings] =
+    useState<PricingSettings | null>(null);
+
+  const [feeLoading, setFeeLoading] = useState(true);
+  const [feeError, setFeeError] = useState("");
 
   const [isFeePaid, setIsFeePaid] = useState(false);
 
@@ -391,6 +466,70 @@ const [feeError, setFeeError] = useState("");
   };
 
   // ========================================
+  // LOAD PRICING FROM BACKEND
+  // ========================================
+
+  const loadPricing = useCallback(async () => {
+    setFeeLoading(true);
+    setFeeError("");
+
+    try {
+      const response = await fetch("/api/pricing", {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      const data: unknown = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          "Unable to fetch pricing from platform settings."
+        );
+      }
+
+      if (
+        !data ||
+        typeof data !== "object" ||
+        !("settings" in data)
+      ) {
+        throw new Error("Invalid pricing API response.");
+      }
+
+      const settings = parsePricingSettings(
+        (data as { settings: unknown }).settings
+      );
+
+      setPricingSettings(settings);
+      setRegistrationFee(
+        settings.teacherRegistrationFee
+      );
+
+      // Only free registration is automatically considered paid.
+      if (settings.teacherRegistrationFee === 0) {
+        setIsFeePaid(true);
+      }
+
+    } catch (error) {
+      console.error("Pricing loading error:", error);
+
+      setPricingSettings(null);
+      setRegistrationFee(null);
+
+      setFeeError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load registration pricing. Please try again."
+      );
+
+    } finally {
+      setFeeLoading(false);
+    }
+  }, []);
+
+  // ========================================
   // CLOUDINARY UPLOAD
   // ========================================
 
@@ -398,7 +537,6 @@ const [feeError, setFeeError] = useState("");
     async (field: FileField, file: File) => {
       const requestId = ++uploadIdsRef.current[field];
 
-      // Start upload state.
       setMediaUploadStatus((prev) => ({
         ...prev,
         [field]: false,
@@ -438,7 +576,6 @@ const [feeError, setFeeError] = useState("");
           },
         });
 
-        // Ignore outdated upload responses.
         if (
           uploadIdsRef.current[field] !== requestId
         ) {
@@ -533,7 +670,6 @@ const [feeError, setFeeError] = useState("");
           return;
         }
 
-        // Invalidate any previous request for this field.
         uploadIdsRef.current[field] += 1;
 
         if (!nextFile) {
@@ -560,7 +696,6 @@ const [feeError, setFeeError] = useState("");
           return;
         }
 
-        // Start Cloudinary upload immediately.
         void uploadMedia(field, nextFile);
       });
 
@@ -573,18 +708,6 @@ const [feeError, setFeeError] = useState("");
   // RETRY FAILED UPLOAD
   // ========================================
 
-  const retryUpload = useCallback(
-    (field: FileField) => {
-      const file = videos[field];
-
-      if (!file || uploading[field]) {
-        return;
-      }
-
-      void uploadMedia(field, file);
-    },
-    [videos, uploading, uploadMedia]
-  );
 
   // ========================================
   // RESTORE SESSION DATA
@@ -618,6 +741,8 @@ const [feeError, setFeeError] = useState("");
             setTeachingInfo(parsed.teachingInfo);
           }
 
+          // Restoring this flag is only for UI continuity.
+          // The backend must verify actual payment on submission.
           if (typeof parsed.isFeePaid === "boolean") {
             setIsFeePaid(parsed.isFeePaid);
           }
@@ -638,6 +763,7 @@ const [feeError, setFeeError] = useState("");
         if (params.get("step") === "5") {
           setCurrentStep(5);
         }
+
       } catch (error) {
         console.error(
           "Unable to restore onboarding:",
@@ -649,7 +775,6 @@ const [feeError, setFeeError] = useState("");
         setIsHydrated(true);
       }
     };
-    
 
     const frame = requestAnimationFrame(restoreData);
 
@@ -658,54 +783,17 @@ const [feeError, setFeeError] = useState("");
       cancelAnimationFrame(frame);
     };
   }, []);
+
+  // ========================================
+  // FETCH PRICING AFTER HYDRATION
+  // ========================================
+
   useEffect(() => {
-  if (!isHydrated) return;
+    if (!isHydrated) return;
 
-  let cancelled = false;
-
-  const loadFee = async () => {
-    setFeeLoading(true);
-    setFeeError("");
-
-    try {
-      const res = await fetch("/api/pricing");
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error("Unable to load registration fee");
-      }
-
-      const fee = Number(data?.settings?.teacherRegistrationFee ?? 0);
-      const safeFee = Number.isFinite(fee) ? fee : 0;
-
-      if (!cancelled) {
-        setRegistrationFee(safeFee);
-
-        // Free registration → mark paid
-        if (safeFee === 0) {
-          setIsFeePaid(true);
-        }
-      }
-    } catch (error) {
-      console.error(error);
-      if (!cancelled) {
-        setFeeError(
-          "Could not load registration fee. Please refresh the page."
-        );
-        // Fail safe: don't block forever; show 0 until reload
-        setRegistrationFee(0);
-      }
-    } finally {
-      if (!cancelled) setFeeLoading(false);
-    }
-  };
-
-  void loadFee();
-
-  return () => {
-    cancelled = true;
-  };
-}, [isHydrated]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadPricing();
+  }, [isHydrated, loadPricing]);
 
   // ========================================
   // AUTO SAVE
@@ -732,6 +820,7 @@ const [feeError, setFeeError] = useState("");
         );
 
         setSaveStatus("saved");
+
       } catch (error) {
         console.error(
           "Unable to save onboarding data:",
@@ -878,8 +967,9 @@ const [feeError, setFeeError] = useState("");
     return errors;
   };
 
-  // Do not trust the old sessionStorage completion flag here.
-  // Each selected file must have a successful upload confirmation.
+  // ========================================
+  // VIDEO VALIDATION
+  // ========================================
 
   const validateVideos = () => {
     const errors: string[] = [];
@@ -918,13 +1008,31 @@ const [feeError, setFeeError] = useState("");
     return errors;
   };
 
+  // ========================================
+  // INTERVIEW VALIDATION
+  // ========================================
+
   const validateInterview = () => {
     return interviewCompleted
       ? []
       : ["Complete your AI teaching interview"];
   };
 
+  // ========================================
+  // PAYMENT VALIDATION
+  // ========================================
+
   const validatePayment = () => {
+    if (feeLoading) {
+      return ["Please wait while registration pricing is loading."];
+    }
+
+    if (feeError || registrationFee === null) {
+      return [
+        "Unable to verify the registration fee. Please retry loading pricing.",
+      ];
+    }
+
     if (registrationFee === 0 || isFeePaid) {
       return [];
     }
@@ -999,17 +1107,23 @@ const [feeError, setFeeError] = useState("");
   };
 
   // ========================================
-  // PAYMENT
+  // PAYMENT SUCCESS
   // ========================================
 
   const handlePaymentSuccess = () => {
+    if (registrationFee === null || registrationFee <= 0) {
+      return;
+    }
+
     setIsFeePaid(true);
 
     setPaymentMessage(
-      "Your payment has been marked as successful."
+      "Your payment was completed successfully."
     );
 
     setValidationErrors([]);
+
+    toast.success("Registration payment successful!");
   };
 
   // ========================================
@@ -1072,7 +1186,7 @@ const [feeError, setFeeError] = useState("");
           teachingInfo,
 
           registrationFeePaid:
-            isFeePaid || registrationFee === 0,
+            registrationFee === 0 || isFeePaid,
         }),
       });
 
@@ -1132,7 +1246,6 @@ const [feeError, setFeeError] = useState("");
     return (
       <div className="min-h-screen bg-slate-50 px-6 pt-24">
         <div className="mx-auto max-w-5xl">
-
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600">
               <GraduationCap className="h-5 w-5 text-white" />
@@ -1162,7 +1275,6 @@ const [feeError, setFeeError] = useState("");
               </p>
             </div>
           </div>
-
         </div>
       </div>
     );
@@ -1174,12 +1286,10 @@ const [feeError, setFeeError] = useState("");
 
   return (
     <div className="min-h-screen bg-white">
-
       {/* HEADER */}
 
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-5 sm:px-8">
-
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600">
               <GraduationCap className="h-4.5 w-4.5 text-white" />
@@ -1229,7 +1339,6 @@ const [feeError, setFeeError] = useState("");
               </>
             )}
           </div>
-
         </div>
       </header>
 
@@ -1245,9 +1354,7 @@ const [feeError, setFeeError] = useState("");
       {/* MAIN CONTENT */}
 
       <main className="mx-auto max-w-5xl bg-white px-5 pb-10 pt-6 sm:px-8 sm:pt-8">
-
         <section>
-
           {/* STEP HEADING */}
 
           <div className="mb-6 flex items-start gap-3">
@@ -1351,7 +1458,6 @@ const [feeError, setFeeError] = useState("");
           {/* STEP COMPONENTS */}
 
           <div key={currentStep} className="min-w-0">
-
             {currentStep === 1 && (
               <StepPersonal
                 data={personal}
@@ -1372,7 +1478,9 @@ const [feeError, setFeeError] = useState("");
                 teachingInfo={teachingInfo}
                 onSubjectsChange={setSubjects}
                 onTeachingInfoChange={setTeachingInfo}
-                showValidationErrors={validationErrors.length > 0}
+                showValidationErrors={
+                  validationErrors.length > 0
+                }
               />
             )}
 
@@ -1384,7 +1492,6 @@ const [feeError, setFeeError] = useState("");
                 uploading={uploading}
                 uploadProgress={uploadProgress}
                 uploadErrors={uploadErrors}
-            
               />
             )}
 
@@ -1394,66 +1501,66 @@ const [feeError, setFeeError] = useState("");
               />
             )}
 
-          {currentStep === 6 && (
-  <>
-    {feeLoading ? (
-      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-8">
-        <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
-        <div>
-          <p className="text-sm font-semibold text-slate-800">
-            Loading registration fee...
-          </p>
-          <p className="text-xs text-slate-500">
-            Fetching latest fee from platform settings
-          </p>
-        </div>
-      </div>
-    ) : feeError ? (
-      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4">
-        <div className="flex items-start gap-2 text-red-700">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            <p className="text-sm font-semibold">Fee load failed</p>
-            <p className="mt-1 text-sm">{feeError}</p>
-            <button
-              type="button"
-              className="mt-2 text-xs font-semibold underline"
-              onClick={() => {
-                setFeeLoading(true);
-                setFeeError("");
-                void fetch("/api/pricing")
-                  .then((r) => r.json())
-                  .then((data) => {
-                    const fee = Number(
-                      data?.settings?.teacherRegistrationFee ?? 0
-                    );
-                    setRegistrationFee(
-                      Number.isFinite(fee) ? fee : 0
-                    );
-                    if (fee === 0) setIsFeePaid(true);
-                  })
-                  .catch(() =>
-                    setFeeError(
-                      "Could not load registration fee. Please refresh."
-                    )
-                  )
-                  .finally(() => setFeeLoading(false));
-              }}
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
-    ) : (
-      <StepRegistrationFee
-        feeAmount={registrationFee}
-        isPaid={isFeePaid || registrationFee === 0}
-        onPaymentSuccess={handlePaymentSuccess}
-      />
-    )}
-  </>
-)}
+            {/* REGISTRATION FEE */}
+
+            {currentStep === 6 && (
+              <>
+                {feeLoading ? (
+                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
+
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        Loading registration fee...
+                      </p>
+
+                      <p className="text-xs text-slate-500">
+                        Fetching the latest fee from platform settings.
+                      </p>
+                    </div>
+                  </div>
+                ) : feeError || registrationFee === null ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4">
+                    <div className="flex items-start gap-2 text-red-700">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold">
+                          Unable to load registration fee
+                        </p>
+
+                        <p className="mt-1 text-sm">
+                          {feeError ||
+                            "Pricing information is currently unavailable."}
+                        </p>
+
+                        <button
+                          type="button"
+                          disabled={feeLoading}
+                          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold underline disabled:opacity-50"
+                          onClick={() => {
+                            void loadPricing();
+                          }}
+                        >
+                          {feeLoading && (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          )}
+                          Retry
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <StepRegistrationFee
+                    feeAmount={registrationFee}
+                    isPaid={
+                      isFeePaid || registrationFee === 0
+                    }
+                    onPaymentSuccess={handlePaymentSuccess}
+                  />
+                )}
+              </>
+            )}
 
             {currentStep === 7 && (
               <StepReview
@@ -1462,18 +1569,18 @@ const [feeError, setFeeError] = useState("");
                 subjects={subjects}
               />
             )}
-
           </div>
 
           {/* NAVIGATION */}
 
           <div className="mt-8 flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
-
             <Button
               type="button"
               variant="outline"
               onClick={prevStep}
-              disabled={currentStep === 1 || isSubmitting}
+              disabled={
+                currentStep === 1 || isSubmitting
+              }
               className="h-10 gap-2 rounded-lg border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-40"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -1487,7 +1594,11 @@ const [feeError, setFeeError] = useState("");
                 disabled={
                   isSubmitting ||
                   (currentStep === 4 &&
-                    Object.values(uploading).some(Boolean))
+                    Object.values(uploading).some(Boolean)) ||
+                  (currentStep === 6 &&
+                    (feeLoading ||
+                      Boolean(feeError) ||
+                      registrationFee === null))
                 }
                 className="h-10 gap-2 rounded-lg bg-indigo-600 px-6 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
               >
@@ -1496,6 +1607,11 @@ const [feeError, setFeeError] = useState("");
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Uploading media...
+                  </>
+                ) : currentStep === 6 && feeLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading pricing...
                   </>
                 ) : (
                   <>
@@ -1524,7 +1640,6 @@ const [feeError, setFeeError] = useState("");
                 )}
               </Button>
             )}
-
           </div>
 
           {/* FOOTER NOTE */}
@@ -1540,7 +1655,6 @@ const [feeError, setFeeError] = useState("");
               Changes are saved automatically
             </span>
           </div>
-
         </section>
       </main>
 
@@ -1562,15 +1676,14 @@ const [feeError, setFeeError] = useState("");
                 </h3>
 
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Please wait while we submit your information for
-                  verification. Do not close this page.
+                  Please wait while we submit your information
+                  for verification. Do not close this page.
                 </p>
               </div>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -17,13 +17,14 @@ import {
   Settings2,
   GraduationCap,
   Users,
+  CreditCard,
   Percent,
   Wallet,
   Check,
   Star,
+  ChevronRight,
   Info,
   CircleDollarSign,
-  AlertCircle,
 } from "lucide-react";
 
 interface CreditPack {
@@ -50,14 +51,6 @@ interface ApiCreditPack {
   amount: number;
   label: string;
   popular?: boolean;
-}
-
-interface ApiResponse {
-  error?: string;
-  message?: string;
-  settings?: Partial<PricingSettings> & {
-    creditPacks?: ApiCreditPack[];
-  };
 }
 
 const makeId = () =>
@@ -109,48 +102,6 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
-/**
- * Safely parses API responses.
- * Handles invalid JSON and non-JSON server errors.
- */
-async function parseApiResponse(
-  response: Response
-): Promise<ApiResponse> {
-  const responseText = await response.text();
-
-  if (!responseText.trim()) {
-    if (!response.ok) {
-      throw new Error(
-        `Request failed with status ${response.status}.`
-      );
-    }
-
-    return {};
-  }
-
-  try {
-    return JSON.parse(responseText) as ApiResponse;
-  } catch {
-    if (!response.ok) {
-      throw new Error(
-        `Server error (${response.status}). Please try again later.`
-      );
-    }
-
-    throw new Error(
-      "The server returned an invalid response. Please try again."
-    );
-  }
-}
-
-function getErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-
-  return fallback;
-}
-
 function SectionHeading({
   number,
   title,
@@ -170,7 +121,6 @@ function SectionHeading({
         <h3 className="text-sm font-semibold text-slate-900">
           {title}
         </h3>
-
         <p className="mt-1 text-xs leading-5 text-slate-500">
           {description}
         </p>
@@ -239,57 +189,26 @@ export default function SuperAdminPricingPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // =========================================
-  // FETCH SETTINGS
-  // =========================================
+  const fetchSettings = useCallback(async () => {
+    setLoading(true);
 
-  const fetchSettings = useCallback(
-    async (showSuccess = false) => {
-      if (loading && hasLoaded) return;
+    try {
+      const res = await fetch("/api/super-admin/pricing", {
+        method: "GET",
+        cache: "no-store",
+      });
 
-      setLoading(true);
-      setLoadError(null);
+      const data = await res.json();
 
-      try {
-        const res = await fetch("/api/super-admin/pricing", {
-          method: "GET",
-          cache: "no-store",
-          headers: {
-            Accept: "application/json",
-          },
-        });
+      if (!res.ok) {
+        throw new Error(
+          data.error || "Failed to load pricing settings."
+        );
+      }
 
-        const data = await parseApiResponse(res);
-
-        if (!res.ok) {
-          throw new Error(
-            data.error ||
-              data.message ||
-              "Unable to load pricing settings."
-          );
-        }
-
-        if (!data.settings) {
-          throw new Error(
-            "Pricing settings were not found in the server response."
-          );
-        }
-
+      if (data.settings) {
         const s = data.settings;
-
-        const creditPacks =
-          Array.isArray(s.creditPacks) &&
-          s.creditPacks.length > 0
-            ? s.creditPacks.map((pack) => ({
-                id: makeId(),
-                credits: String(pack.credits ?? 0),
-                amount: String(pack.amount ?? 0),
-                label: pack.label || "",
-                popular: Boolean(pack.popular),
-              }))
-            : createDefaultSettings().creditPacks;
 
         setSettings({
           teacherRegistrationFee: String(
@@ -313,43 +232,39 @@ export default function SuperAdminPricingPage() {
           platformCommissionPercent: String(
             s.platformCommissionPercent ?? 10
           ),
-          creditPacks,
+          creditPacks:
+            Array.isArray(s.creditPacks) &&
+            s.creditPacks.length > 0
+              ? (s.creditPacks as ApiCreditPack[]).map((p) => ({
+                  id: makeId(),
+                  credits: String(p.credits ?? 0),
+                  amount: String(p.amount ?? 0),
+                  label: p.label || "",
+                  popular: Boolean(p.popular),
+                }))
+              : createDefaultSettings().creditPacks,
         });
-
-        setLoadError(null);
-
-        if (showSuccess) {
-          toast.success("Pricing settings refreshed successfully.");
-        }
-      } catch (error) {
-        console.error("Pricing settings fetch error:", error);
-
-        const message = getErrorMessage(
-          error,
-          "Failed to load pricing settings."
-        );
-
-        setLoadError(message);
-        toast.error(message, {
-          description:
-            "Please check your connection and try again.",
-        });
-      } finally {
-        setLoading(false);
-        setHasLoaded(true);
       }
-    },
-    [hasLoaded, loading]
-  );
+
+      toast.success("Pricing settings loaded");
+    } catch (error) {
+      console.error("Pricing settings fetch error:", error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to load pricing settings."
+      );
+    } finally {
+      setLoading(false);
+      setHasLoaded(true);
+    }
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchSettings();
   }, [fetchSettings]);
-
-  // =========================================
-  // FIELD HANDLERS
-  // =========================================
 
   const handleChange = (
     field: keyof Omit<PricingSettings, "creditPacks">,
@@ -379,13 +294,7 @@ export default function SuperAdminPricingPage() {
     }));
   };
 
-  // =========================================
-  // ADD CREDIT PACKAGE
-  // =========================================
-
   const addPack = () => {
-    if (saving) return;
-
     setSettings((prev) => ({
       ...prev,
       creditPacks: [
@@ -400,27 +309,17 @@ export default function SuperAdminPricingPage() {
       ],
     }));
 
-    toast.success("Credit package added.", {
-      description: "Configure its name, credits and price before publishing.",
-    });
+    toast.success("New credit pack added");
   };
 
-  // =========================================
-  // REMOVE CREDIT PACKAGE
-  // =========================================
-
   const removePack = (id: string) => {
-    if (saving) return;
-
     if (settings.creditPacks.length <= 1) {
-      toast.error("Cannot remove the last package.", {
-        description: "At least one credit package is required.",
-      });
+      toast.error("At least one credit pack is required.");
       return;
     }
 
     const confirmed = window.confirm(
-      "Are you sure you want to remove this credit package?"
+      "Are you sure you want to remove this credit pack?"
     );
 
     if (!confirmed) return;
@@ -432,40 +331,29 @@ export default function SuperAdminPricingPage() {
       ),
     }));
 
-    toast.success("Credit package removed.");
+    toast.success("Credit pack removed");
   };
-
-  // =========================================
-  // VALIDATION
-  // =========================================
 
   const validateSettings = () => {
     if (!settings.creditPacks.length) {
-      toast.error("No credit packages configured.", {
-        description: "Add at least one credit package.",
-      });
+      toast.error("Add at least one credit pack.");
       return false;
     }
 
-    for (const [index, pack] of settings.creditPacks.entries()) {
-      const packName = pack.label.trim() || `Package ${index + 1}`;
-
+    for (const pack of settings.creditPacks) {
       if (!pack.label.trim()) {
-        toast.error("Package name is required.", {
-          description: `Please enter a name for package ${index + 1}.`,
-        });
+        toast.error("Every credit pack must have a name.");
         return false;
       }
 
       if (
         pack.credits.trim() === "" ||
         !Number.isFinite(Number(pack.credits)) ||
-        !Number.isInteger(Number(pack.credits)) ||
         toNum(pack.credits) < 1
       ) {
-        toast.error("Invalid credit quantity.", {
-          description: `${packName} must have a positive whole-number credit quantity.`,
-        });
+        toast.error(
+          `Enter valid credits for the ${pack.label || "unnamed"} pack.`
+        );
         return false;
       }
 
@@ -474,54 +362,31 @@ export default function SuperAdminPricingPage() {
         !Number.isFinite(Number(pack.amount)) ||
         toNum(pack.amount) < 1
       ) {
-        toast.error("Invalid package price.", {
-          description: `${packName} must have a price greater than ₹0.`,
-        });
+        toast.error(
+          `Enter a valid price for the ${pack.label || "unnamed"} pack.`
+        );
         return false;
       }
     }
 
     const numericFields = [
-      {
-        label: "Teacher registration fee",
-        value: settings.teacherRegistrationFee,
-      },
-      {
-        label: "Client registration fee",
-        value: settings.clientRegistrationFee,
-      },
-      {
-        label: "Connection credit price",
-        value: settings.connectionCreditPrice,
-      },
-      {
-        label: "Teacher subscription",
-        value: settings.teacherSubscriptionMonthly,
-      },
-      {
-        label: "Client subscription",
-        value: settings.clientSubscriptionMonthly,
-      },
-      {
-        label: "Free signup credits",
-        value: settings.freeCreditsOnSignup,
-      },
-      {
-        label: "Platform commission",
-        value: settings.platformCommissionPercent,
-      },
+      settings.teacherRegistrationFee,
+      settings.clientRegistrationFee,
+      settings.connectionCreditPrice,
+      settings.teacherSubscriptionMonthly,
+      settings.clientSubscriptionMonthly,
+      settings.freeCreditsOnSignup,
+      settings.platformCommissionPercent,
     ];
 
-    for (const field of numericFields) {
-      if (
-        field.value.trim() === "" ||
-        !Number.isFinite(Number(field.value))
-      ) {
-        toast.error("Invalid pricing value.", {
-          description: `Please enter a valid number for ${field.label.toLowerCase()}.`,
-        });
-        return false;
-      }
+    if (
+      numericFields.some(
+        (value) =>
+          value.trim() === "" || !Number.isFinite(Number(value))
+      )
+    ) {
+      toast.error("Please enter valid numbers in all pricing fields.");
+      return false;
     }
 
     if (
@@ -534,34 +399,20 @@ export default function SuperAdminPricingPage() {
       toNum(settings.platformCommissionPercent) < 0 ||
       toNum(settings.platformCommissionPercent) > 100
     ) {
-      toast.error("Pricing values are outside the allowed range.", {
-        description:
-          "Fees and subscriptions cannot be negative. Connection credit price must be at least 1, and commission must be between 0 and 100.",
-      });
+      toast.error(
+        "Check your pricing values. Commission must be between 0 and 100."
+      );
       return false;
     }
 
     return true;
   };
 
-  // =========================================
-  // SAVE SETTINGS
-  // =========================================
-
   const handleSave = async () => {
-    if (saving || loading) return;
-
-    if (!hasLoaded || loadError) {
-      toast.error("Pricing settings are not ready.", {
-        description: "Refresh the settings before publishing changes.",
-      });
-      return;
-    }
-
     if (!validateSettings()) return;
 
     const confirmed = window.confirm(
-      "Publish these pricing changes?\n\nUpdated prices and credit packages may affect all platform users."
+      "Publish these pricing changes?\n\nUpdated prices and credit packs may affect all platform users."
     );
 
     if (!confirmed) return;
@@ -598,72 +449,42 @@ export default function SuperAdminPricingPage() {
 
     setSaving(true);
 
-    const toastId = toast.loading("Publishing pricing settings...", {
-      description: "Please wait while your changes are saved.",
-    });
-
     try {
       const res = await fetch("/api/super-admin/pricing", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
         },
         body: JSON.stringify(payload),
       });
 
-      const data = await parseApiResponse(res);
+      const data = await res.json();
 
       if (!res.ok) {
         throw new Error(
-          data.error ||
-            data.message ||
-            "Failed to save pricing settings."
+          data.error || "Failed to save pricing settings."
         );
       }
 
-      toast.success("Pricing published successfully.", {
-        id: toastId,
-        description:
-          data.message ||
-          "Your platform pricing configuration has been updated.",
-      });
+      toast.success("Platform pricing updated successfully.");
     } catch (error) {
       console.error("Pricing save error:", error);
 
-      const message = getErrorMessage(
-        error,
-        "Something went wrong while saving pricing."
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while saving pricing."
       );
-
-      toast.error("Unable to publish pricing.", {
-        id: toastId,
-        description: message,
-        duration: 5000,
-      });
     } finally {
       setSaving(false);
     }
   };
-
-  // =========================================
-  // DERIVED VALUES
-  // =========================================
 
   const totalPacks = settings.creditPacks.length;
 
   const popularPack = settings.creditPacks.find(
     (pack) => pack.popular
   );
-
-  const totalPackageCredits = settings.creditPacks.reduce(
-    (sum, pack) => sum + toNum(pack.credits),
-    0
-  );
-
-  // =========================================
-  // INITIAL LOADING
-  // =========================================
 
   if (loading && !hasLoaded) {
     return (
@@ -676,7 +497,6 @@ export default function SuperAdminPricingPage() {
           <p className="text-sm font-semibold text-slate-800">
             Loading pricing configuration
           </p>
-
           <p className="mt-1 text-xs text-slate-400">
             Retrieving platform settings...
           </p>
@@ -684,48 +504,6 @@ export default function SuperAdminPricingPage() {
       </div>
     );
   }
-
-  // =========================================
-  // INITIAL LOAD ERROR
-  // =========================================
-
-  if (loadError && !hasLoaded) {
-    return (
-      <div className="flex min-h-[450px] items-center justify-center px-4">
-        <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-7 text-center shadow-sm">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-red-50">
-            <AlertCircle className="h-6 w-6 text-red-600" />
-          </div>
-
-          <h2 className="mt-4 text-base font-semibold text-slate-900">
-            Unable to load pricing settings
-          </h2>
-
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            {loadError}
-          </p>
-
-          <Button
-            type="button"
-            onClick={() => void fetchSettings()}
-            disabled={loading}
-            className="mt-5 h-10 gap-2 bg-indigo-600 px-5 text-xs font-semibold text-white hover:bg-indigo-700"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Try again
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // =========================================
-  // MAIN PAGE
-  // =========================================
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-7 pb-10">
@@ -750,7 +528,7 @@ export default function SuperAdminPricingPage() {
         <Button
           type="button"
           variant="outline"
-          onClick={() => void fetchSettings(true)}
+          onClick={() => void fetchSettings()}
           disabled={loading || saving}
           className="h-9 gap-2 border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
         >
@@ -763,41 +541,6 @@ export default function SuperAdminPricingPage() {
         </Button>
       </div>
 
-      {/* REFRESH ERROR */}
-      {loadError && hasLoaded && (
-        <div className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-
-            <div>
-              <p className="text-xs font-semibold text-red-800">
-                Could not refresh pricing settings
-              </p>
-
-              <p className="mt-1 text-xs text-red-700">
-                {loadError} Your previously loaded settings are still displayed.
-              </p>
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void fetchSettings(true)}
-            disabled={loading || saving}
-            className="h-8 shrink-0 border-red-200 bg-white text-xs text-red-700 hover:bg-red-100"
-          >
-            <RefreshCw
-              className={`mr-2 h-3.5 w-3.5 ${
-                loading ? "animate-spin" : ""
-              }`}
-            />
-            Retry
-          </Button>
-        </div>
-      )}
-
       {/* SUMMARY OVERVIEW */}
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -809,7 +552,9 @@ export default function SuperAdminPricingPage() {
           </div>
 
           <p className="mt-3 text-xl font-bold text-slate-900">
-            {formatCurrency(toNum(settings.teacherRegistrationFee))}
+            {formatCurrency(
+              toNum(settings.teacherRegistrationFee)
+            )}
           </p>
 
           <p className="mt-1 text-[11px] text-slate-400">
@@ -826,7 +571,9 @@ export default function SuperAdminPricingPage() {
           </div>
 
           <p className="mt-3 text-xl font-bold text-slate-900">
-            {formatCurrency(toNum(settings.clientRegistrationFee))}
+            {formatCurrency(
+              toNum(settings.clientRegistrationFee)
+            )}
           </p>
 
           <p className="mt-1 text-[11px] text-slate-400">
@@ -856,7 +603,7 @@ export default function SuperAdminPricingPage() {
             <span className="text-xs font-medium text-slate-500">
               Platform commission
             </span>
-            <Percent className="h-4 w-4 text-indigo-600" />
+            <Percent className="h-4 w-4 text-emerald-600" />
           </div>
 
           <p className="mt-3 text-xl font-bold text-slate-900">
@@ -877,7 +624,6 @@ export default function SuperAdminPricingPage() {
             title="Registration fees"
             description="Configure one-time registration charges for each account type."
           />
-
           <GraduationCap className="hidden h-5 w-5 text-slate-300 sm:block" />
         </div>
 
@@ -926,9 +672,9 @@ export default function SuperAdminPricingPage() {
         </div>
 
         <div className="p-5">
+          {/* Package info */}
           <div className="mb-5 flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
-
             <p className="text-xs leading-5 text-indigo-800">
               Set the credit quantity and purchase price for each package.
               The Popular badge highlights a package in the user-facing
@@ -953,6 +699,7 @@ export default function SuperAdminPricingPage() {
                       : "border-slate-200 bg-white"
                   }`}
                 >
+                  {/* Pack header */}
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600">
@@ -992,6 +739,7 @@ export default function SuperAdminPricingPage() {
                     </Button>
                   </div>
 
+                  {/* Pack fields */}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-slate-600">
@@ -1001,7 +749,11 @@ export default function SuperAdminPricingPage() {
                       <Input
                         value={pack.label}
                         onChange={(e) =>
-                          updatePack(pack.id, "label", e.target.value)
+                          updatePack(
+                            pack.id,
+                            "label",
+                            e.target.value
+                          )
                         }
                         placeholder="Starter"
                         disabled={saving}
@@ -1017,10 +769,13 @@ export default function SuperAdminPricingPage() {
                       <Input
                         type="number"
                         min={1}
-                        step={1}
                         value={pack.credits}
                         onChange={(e) =>
-                          updatePack(pack.id, "credits", e.target.value)
+                          updatePack(
+                            pack.id,
+                            "credits",
+                            e.target.value
+                          )
                         }
                         placeholder="15"
                         disabled={saving}
@@ -1039,10 +794,13 @@ export default function SuperAdminPricingPage() {
                         <Input
                           type="number"
                           min={1}
-                          step="any"
                           value={pack.amount}
                           onChange={(e) =>
-                            updatePack(pack.id, "amount", e.target.value)
+                            updatePack(
+                              pack.id,
+                              "amount",
+                              e.target.value
+                            )
                           }
                           placeholder="249"
                           disabled={saving}
@@ -1052,6 +810,7 @@ export default function SuperAdminPricingPage() {
                     </div>
                   </div>
 
+                  {/* Package footer */}
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
                     <button
                       type="button"
@@ -1081,7 +840,6 @@ export default function SuperAdminPricingPage() {
                           <Check className="h-3 w-3" />
                         )}
                       </span>
-
                       Mark as popular package
                     </button>
 
@@ -1097,12 +855,12 @@ export default function SuperAdminPricingPage() {
             })}
           </div>
 
+          {/* Package summary */}
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-4 py-3">
             <div>
               <p className="text-xs font-semibold text-slate-700">
                 Package configuration
               </p>
-
               <p className="mt-0.5 text-[11px] text-slate-400">
                 {totalPacks} packages configured
                 {popularPack
@@ -1112,7 +870,11 @@ export default function SuperAdminPricingPage() {
             </div>
 
             <span className="text-xs font-semibold text-indigo-600">
-              {totalPackageCredits} total package credits
+              {settings.creditPacks.reduce(
+                (sum, pack) => sum + toNum(pack.credits),
+                0
+              )}{" "}
+              total package credits
             </span>
           </div>
         </div>
@@ -1188,7 +950,10 @@ export default function SuperAdminPricingPage() {
               label="Commission percentage"
               value={settings.platformCommissionPercent}
               onChange={(value) =>
-                handleChange("platformCommissionPercent", value)
+                handleChange(
+                  "platformCommissionPercent",
+                  value
+                )
               }
               suffix="%"
               description="Enter a value between 0 and 100."
@@ -1212,7 +977,8 @@ export default function SuperAdminPricingPage() {
                         1000 *
                           (toNum(
                             settings.platformCommissionPercent
-                          ) / 100)
+                          ) /
+                            100)
                       )}
                     </strong>{" "}
                     at the current commission rate.
@@ -1231,7 +997,6 @@ export default function SuperAdminPricingPage() {
             <p className="text-sm font-semibold text-slate-800">
               Ready to publish your pricing?
             </p>
-
             <p className="mt-1 text-xs text-slate-400">
               Changes will apply after successfully saving the configuration.
             </p>
@@ -1241,22 +1006,18 @@ export default function SuperAdminPricingPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => void fetchSettings(true)}
+              onClick={() => void fetchSettings()}
               disabled={saving || loading}
               className="h-10 border-slate-200 text-xs font-semibold"
             >
-              <RefreshCw
-                className={`mr-2 h-3.5 w-3.5 ${
-                  loading ? "animate-spin" : ""
-                }`}
-              />
+              <RefreshCw className="mr-2 h-3.5 w-3.5" />
               Reset from server
             </Button>
 
             <Button
               type="button"
               onClick={() => void handleSave()}
-              disabled={saving || loading || !hasLoaded || Boolean(loadError)}
+              disabled={saving || loading}
               className="h-10 gap-2 bg-indigo-600 px-5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
             >
               {saving ? (
