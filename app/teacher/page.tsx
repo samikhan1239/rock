@@ -2,6 +2,7 @@ import Link from "next/link";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+
 import {
   Wallet,
   Users,
@@ -19,14 +20,93 @@ import {
   Bell,
   ChevronRight,
   TrendingUp,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  ShieldAlert,
+  FileEdit,
 } from "lucide-react";
 
-export default async function TeacherOverviewPage() {
-  const clerkUser = await currentUser();
-  if (!clerkUser) redirect("/login");
+const verificationConfig = {
+  APPROVED: {
+    label: "Verified",
+    description: "Your profile is verified and visible to clients.",
+    icon: CheckCircle2,
+    iconColor: "text-blue-600",
+    iconBg: "bg-blue-50",
+    container: "from-blue-50 to-indigo-50",
+    badge: "bg-blue-100 text-blue-700",
+  },
 
+  PENDING: {
+    label: "Pending",
+    description:
+      "Your profile has been submitted and is waiting for verification.",
+    icon: Clock,
+    iconColor: "text-amber-600",
+    iconBg: "bg-amber-50",
+    container: "from-amber-50 to-orange-50",
+    badge: "bg-amber-100 text-amber-700",
+  },
+
+  UNDER_REVIEW: {
+    label: "Under Review",
+    description:
+      "Our verification team is currently reviewing your profile.",
+    icon: AlertCircle,
+    iconColor: "text-violet-600",
+    iconBg: "bg-violet-50",
+    container: "from-violet-50 to-indigo-50",
+    badge: "bg-violet-100 text-violet-700",
+  },
+
+  REJECTED: {
+    label: "Rejected",
+    description:
+      "Your verification was rejected. Please review your details and make the necessary corrections.",
+    icon: XCircle,
+    iconColor: "text-red-600",
+    iconBg: "bg-red-50",
+    container: "from-red-50 to-rose-50",
+    badge: "bg-red-100 text-red-700",
+  },
+
+  SUSPENDED: {
+    label: "Suspended",
+    description:
+      "Your teacher account is currently suspended. Please contact support.",
+    icon: ShieldAlert,
+    iconColor: "text-orange-600",
+    iconBg: "bg-orange-50",
+    container: "from-orange-50 to-amber-50",
+    badge: "bg-orange-100 text-orange-700",
+  },
+
+  DRAFT: {
+    label: "Not Submitted",
+    description:
+      "Complete your profile and assessments before submitting for verification.",
+    icon: FileEdit,
+    iconColor: "text-slate-500",
+    iconBg: "bg-slate-100",
+    container: "from-slate-50 to-blue-50",
+    badge: "bg-slate-100 text-slate-600",
+  },
+} as const;
+
+export default async function TeacherOverviewPage() {
+  // AUTHENTICATION
+  const clerkUser = await currentUser();
+
+  if (!clerkUser) {
+    redirect("/login");
+  }
+
+  // FETCH USER DATA
   const user = await prisma.user.findUnique({
-    where: { clerkId: clerkUser.id },
+    where: {
+      clerkId: clerkUser.id,
+    },
     include: {
       creditWallet: true,
       teacherProfile: {
@@ -34,7 +114,9 @@ export default async function TeacherOverviewPage() {
           subjects: true,
           videos: true,
           aiInterviews: {
-            where: { status: "completed" },
+            where: {
+              status: "completed",
+            },
             take: 1,
           },
         },
@@ -42,21 +124,36 @@ export default async function TeacherOverviewPage() {
     },
   });
 
+  // PROFILE AND WALLET
   const profile = user?.teacherProfile;
   const wallet = user?.creditWallet;
 
+  // VERIFICATION STATUS
+  const verificationStatus = profile?.verificationStatus || "DRAFT";
+
+  const verification =
+    verificationConfig[
+      verificationStatus as keyof typeof verificationConfig
+    ] ?? verificationConfig.DRAFT;
+
+  const VerificationIcon = verification.icon;
+
+  // AVAILABLE CREDITS
   const availableCredits =
     (wallet?.freeCredits || 0) +
     (wallet?.purchasedCredits || 0) -
     (wallet?.reservedCredits || 0);
 
+  // TEACHER REQUESTS
   const teacherId = profile?.id;
 
   const pendingRequests = teacherId
     ? await prisma.connectionRequest.count({
         where: {
           teacherId,
-          status: { in: ["PENDING", "UNDER_REVIEW"] },
+          status: {
+            in: ["PENDING", "UNDER_REVIEW"],
+          },
         },
       })
     : 0;
@@ -66,31 +163,42 @@ export default async function TeacherOverviewPage() {
         where: {
           teacherId,
           status: {
-            in: ["APPROVED", "CONNECTION_ESTABLISHED", "HIRING_CONFIRMED"],
+            in: [
+              "APPROVED",
+              "CONNECTION_ESTABLISHED",
+              "HIRING_CONFIRMED",
+            ],
           },
         },
       })
     : 0;
 
-  const verificationStatus = profile?.verificationStatus || "DRAFT";
-
-  // Profile completion checklist
+  // PROFILE COMPLETION CHECKLIST
   const stepsDone = {
     profile: Boolean(profile?.city && profile?.address),
+
     education: Boolean(profile?.college && profile?.degree),
+
     subjects: (profile?.subjects?.length || 0) > 0,
+
     videos: (profile?.videos?.length || 0) > 0,
+
     interview: (profile?.aiInterviews?.length || 0) > 0,
-    submitted: ["PENDING", "UNDER_REVIEW", "APPROVED"].includes(
-      verificationStatus
-    ),
+
+    submitted: [
+      "PENDING",
+      "UNDER_REVIEW",
+      "APPROVED",
+    ].includes(verificationStatus),
   };
 
   const completedCount = Object.values(stepsDone).filter(Boolean).length;
+
   const progressPct = Math.round((completedCount / 6) * 100);
 
   const firstName = clerkUser.firstName || "Teacher";
 
+  // DASHBOARD STATISTICS
   const stats = [
     {
       title: "Available Credits",
@@ -124,19 +232,17 @@ export default async function TeacherOverviewPage() {
     },
     {
       title: "Verification",
-      value: verificationStatus.replace("_", " "),
-      description:
-        verificationStatus === "APPROVED"
-          ? "Your profile is verified"
-          : "Complete onboarding to get verified",
-      icon: ShieldCheck,
-      color: "text-violet-600",
-      bg: "bg-violet-50",
+      value: verification.label,
+      description: verification.description,
+      icon: verification.icon,
+      color: verification.iconColor,
+      bg: verification.iconBg,
       link: "/teacher/verification",
       linkText: "View status",
     },
   ];
 
+  // ONBOARDING STEPS
   const onboardingSteps = [
     {
       title: "Complete your profile",
@@ -182,6 +288,7 @@ export default async function TeacherOverviewPage() {
     },
   ];
 
+  // QUICK ACTIONS
   const quickActions = [
     {
       title: "Buy Credits",
@@ -197,20 +304,6 @@ export default async function TeacherOverviewPage() {
       icon: Users,
       color: "bg-blue-50 text-blue-600",
     },
-    {
-      title: "AI Interview",
-      description: "Complete your teaching assessment.",
-      href: "/teacher/ai-interview",
-      icon: Brain,
-      color: "bg-purple-50 text-purple-600",
-    },
-    {
-      title: "Verification",
-      description: "Check verification status.",
-      href: "/teacher/verification",
-      icon: ShieldCheck,
-      color: "bg-violet-50 text-violet-600",
-    },
   ];
 
   return (
@@ -218,6 +311,7 @@ export default async function TeacherOverviewPage() {
       {/* WELCOME */}
       <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#4338CA] via-[#4F46E5] to-[#2563EB] p-6 text-white shadow-lg shadow-indigo-100 sm:p-8">
         <div className="pointer-events-none absolute -right-10 -top-20 h-72 w-72 rounded-full border-[35px] border-white/10" />
+
         <div className="relative z-10 flex flex-col justify-between gap-7 md:flex-row md:items-center">
           <div className="max-w-xl">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-indigo-50 backdrop-blur-sm">
@@ -264,7 +358,10 @@ export default async function TeacherOverviewPage() {
       {/* STATS */}
       <section>
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-[#172554]">Your Overview</h2>
+          <h2 className="text-lg font-bold text-[#172554]">
+            Your Overview
+          </h2>
+
           <p className="mt-1 text-sm text-[#64748B]">
             Live data from your account
           </p>
@@ -273,6 +370,7 @@ export default async function TeacherOverviewPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {stats.map((stat) => {
             const Icon = stat.icon;
+
             return (
               <div
                 key={stat.title}
@@ -283,16 +381,20 @@ export default async function TeacherOverviewPage() {
                     <p className="text-sm font-medium text-[#64748B]">
                       {stat.title}
                     </p>
+
                     <h3 className="mt-3 text-3xl font-bold tracking-tight text-[#172554]">
                       {stat.value}
                     </h3>
                   </div>
+
                   <div className={`rounded-xl p-3 ${stat.bg}`}>
                     <Icon className={`h-5 w-5 ${stat.color}`} />
                   </div>
                 </div>
 
-                <p className="mt-2 text-xs text-[#94A3B8]">{stat.description}</p>
+                <p className="mt-2 text-xs leading-5 text-[#94A3B8]">
+                  {stat.description}
+                </p>
 
                 <Link
                   href={stat.link}
@@ -309,6 +411,7 @@ export default async function TeacherOverviewPage() {
 
       {/* PROFILE COMPLETION + VERIFICATION */}
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        {/* PROFILE COMPLETION */}
         <div className="rounded-2xl border border-[#E8ECF5] bg-white p-6 shadow-sm xl:col-span-2">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
@@ -316,26 +419,38 @@ export default async function TeacherOverviewPage() {
                 <h2 className="text-lg font-bold text-[#172554]">
                   Profile Completion
                 </h2>
-                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+
+                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
                   {completedCount}/6
                 </span>
               </div>
+
               <p className="mt-1 text-sm text-[#64748B]">
                 Complete these steps to get verified.
               </p>
             </div>
           </div>
 
+          {/* PROGRESS */}
           <div className="mt-7">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-medium text-[#475569]">
                 Progress
               </span>
+
               <span className="text-sm font-bold text-indigo-600">
                 {progressPct}%
               </span>
             </div>
-            <div className="h-2.5 overflow-hidden rounded-full bg-[#EEF2FF]">
+
+            <div
+              className="h-2.5 overflow-hidden rounded-full bg-[#EEF2FF]"
+              role="progressbar"
+              aria-valuenow={progressPct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Profile completion"
+            >
               <div
                 className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-blue-500 transition-all"
                 style={{ width: `${progressPct}%` }}
@@ -343,9 +458,11 @@ export default async function TeacherOverviewPage() {
             </div>
           </div>
 
+          {/* CHECKLIST */}
           <div className="mt-6 space-y-2">
             {onboardingSteps.map((step) => {
               const Icon = step.icon;
+
               return (
                 <Link
                   key={step.title}
@@ -355,74 +472,96 @@ export default async function TeacherOverviewPage() {
                   <div
                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
                       step.done
-                        ? "bg-green-50 text-green-600"
+                        ? "bg-blue-50 text-blue-600"
                         : "bg-[#EEF2FF] text-indigo-600"
                     }`}
                   >
-                    <Icon className="h-5 w-5" />
+                    {step.done ? (
+                      <CheckCircle2 className="h-5 w-5" />
+                    ) : (
+                      <Icon className="h-5 w-5" />
+                    )}
                   </div>
+
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-[#334155]">
                       {step.title}
                     </p>
+
                     <p className="mt-0.5 text-xs text-[#94A3B8]">
                       {step.description}
                     </p>
                   </div>
+
                   {step.done ? (
-                    <span className="text-xs font-semibold text-green-600">
+                    <span className="text-xs font-semibold text-blue-600">
                       Done
                     </span>
                   ) : (
                     <Circle className="h-4 w-4 text-[#CBD5E1]" />
                   )}
-                  <ChevronRight className="h-4 w-4 text-[#CBD5E1]" />
+
+                  <ChevronRight className="h-4 w-4 text-[#CBD5E1] transition group-hover:translate-x-0.5 group-hover:text-indigo-500" />
                 </Link>
               );
             })}
           </div>
         </div>
 
+        {/* VERIFICATION */}
         <div className="flex flex-col rounded-2xl border border-[#E8ECF5] bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-[#172554]">Verification</h2>
-            <div className="rounded-xl bg-violet-50 p-2.5">
-              <ShieldCheck className="h-5 w-5 text-violet-600" />
+            <h2 className="text-lg font-bold text-[#172554]">
+              Verification
+            </h2>
+
+            <div className="rounded-xl bg-indigo-50 p-2.5">
+              <ShieldCheck className="h-5 w-5 text-indigo-600" />
             </div>
           </div>
 
-          <div className="mt-6 flex flex-1 flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-[#F5F3FF] to-[#EEF2FF] px-4 py-8 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-sm">
-              <Clock className="h-8 w-8 text-amber-500" />
-            </div>
-            <h3 className="mt-4 text-xl font-bold text-[#172554]">
-              {verificationStatus.replace("_", " ")}
-            </h3>
-            <p className="mt-2 max-w-[220px] text-sm leading-6 text-[#64748B]">
-              {verificationStatus === "APPROVED"
-                ? "You are verified and visible to clients."
-                : "Complete profile and assessments before submission."}
-            </p>
-          </div>
-
-          <Link
-            href="/teacher/verification"
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white"
+          <div
+            className={`mt-6 flex flex-1 flex-col items-center justify-center rounded-2xl bg-gradient-to-br ${verification.container} px-4 py-8 text-center`}
           >
-            Go to Verification
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-sm">
+              <VerificationIcon
+                className={`h-9 w-9 ${verification.iconColor}`}
+                strokeWidth={2}
+              />
+            </div>
+
+            <span
+              className={`mt-4 rounded-full px-3 py-1 text-[11px] font-bold ${verification.badge}`}
+            >
+              {verification.label}
+            </span>
+
+            <h3 className="mt-3 text-xl font-bold text-[#172554]">
+              {verification.label}
+            </h3>
+
+            <p className="mt-2 max-w-[240px] text-sm leading-6 text-[#64748B]">
+              {verification.description}
+            </p>
+
+           
+          
+          </div>
         </div>
       </section>
 
       {/* QUICK ACTIONS */}
       <section>
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-[#172554]">Quick Actions</h2>
+          <h2 className="text-lg font-bold text-[#172554]">
+            Quick Actions
+          </h2>
         </div>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {quickActions.map((action) => {
             const Icon = action.icon;
+
             return (
               <Link
                 key={action.title}
@@ -434,25 +573,32 @@ export default async function TeacherOverviewPage() {
                 >
                   <Icon className="h-6 w-6" />
                 </div>
+
                 <div className="min-w-0 flex-1">
                   <h3 className="text-sm font-bold text-[#172554]">
                     {action.title}
                   </h3>
+
                   <p className="mt-1 text-xs text-[#94A3B8]">
                     {action.description}
                   </p>
                 </div>
+
+                <ArrowUpRight className="h-4 w-4 shrink-0 text-[#CBD5E1] transition group-hover:text-indigo-600" />
               </Link>
             );
           })}
         </div>
       </section>
 
-      {/* RECENT ACTIVITY placeholder */}
+      {/* RECENT ACTIVITY */}
       <section className="rounded-2xl border border-[#E8ECF5] bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-[#172554]">Recent Activity</h2>
+            <h2 className="text-lg font-bold text-[#172554]">
+              Recent Activity
+            </h2>
+
             <p className="mt-1 text-sm text-[#64748B]">
               Latest updates will appear here
             </p>
@@ -463,29 +609,38 @@ export default async function TeacherOverviewPage() {
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50">
             <Bell className="h-6 w-6 text-indigo-500" />
           </div>
+
           <h3 className="mt-4 text-sm font-bold text-[#334155]">
             No recent activity
           </h3>
+
+          <p className="mt-1 text-xs text-[#94A3B8]">
+            Your latest requests and account updates will appear here.
+          </p>
         </div>
       </section>
 
+      {/* CREDITS CTA */}
       <section className="flex flex-col justify-between gap-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-blue-50 p-5 sm:flex-row sm:items-center">
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-white p-2.5 shadow-sm">
             <TrendingUp className="h-5 w-5 text-indigo-600" />
           </div>
+
           <div>
             <h3 className="text-sm font-bold text-[#172554]">
               Need more connection requests?
             </h3>
+
             <p className="mt-1 text-xs text-[#64748B]">
               Buy credits anytime. Prices are controlled by Super Admin.
             </p>
           </div>
         </div>
+
         <Link
           href="/teacher/credits"
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-indigo-600 shadow-sm hover:bg-indigo-600 hover:text-white"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-indigo-600 shadow-sm transition hover:bg-indigo-600 hover:text-white"
         >
           Buy Credits
           <ArrowRight className="h-4 w-4" />

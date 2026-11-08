@@ -384,7 +384,7 @@ export default function TeacherProfilePage() {
           <div className="mt-6 flex justify-center gap-3">
             <Button
               variant="outline"
-              onClick={() => router.push("/client/find-teachers")}
+              onClick={() => router.push("/client/find-teacher")}
             >
               <ArrowLeft size={16} className="mr-2" />
               Go back
@@ -427,7 +427,7 @@ export default function TeacherProfilePage() {
 
         {/* Navigation */}
         <button
-          onClick={() => router.push("/client/find-teachers")}
+          onClick={() => router.push("/client/find-teacher")}
           className="mb-8 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-indigo-600"
         >
           <ArrowLeft size={16} />

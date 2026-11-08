@@ -2,19 +2,92 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
+export async function GET() {
+  try {
+    const { userId } = await auth();
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId: userId },
+      include: {
+        clientProfile: true,
+      },
+    });
+
+    if (!user || !user.clientProfile) {
+      return NextResponse.json(
+        {
+          success: true,
+          profile: null,
+          message: "No saved client profile found",
+        },
+        { status: 404 }
+      );
+    }
+
+    const profile = {
+      fullName: [user.firstName, user.lastName]
+        .filter(Boolean)
+        .join(" "),
+      phone: user.phone || "",
+      location: user.clientProfile.location || "",
+      studentClass: user.clientProfile.studentClass || "",
+      requiredSubjects: Array.isArray(
+        user.clientProfile.requiredSubjects
+      )
+        ? user.clientProfile.requiredSubjects.join(", ")
+        : "",
+      teachingMode: user.clientProfile.teachingMode || "",
+      preferredLanguage: user.clientProfile.preferredLanguage || "",
+    };
+
+    return NextResponse.json({
+      success: true,
+      profile,
+    });
+  } catch (error: unknown) {
+    console.error("Get client profile error:", error);
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to retrieve client profile";
+
+    return NextResponse.json(
+      { error: message },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
+
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
     const clerkUser = await currentUser();
+
     if (!clerkUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
     }
 
     const body = await req.json();
+
     const {
       fullName,
       phone,
@@ -34,7 +107,8 @@ export async function POST(req: Request) {
       user = await prisma.user.create({
         data: {
           clerkId: userId,
-          email: clerkUser.emailAddresses[0]?.emailAddress || "",
+          email:
+            clerkUser.emailAddresses[0]?.emailAddress || "",
           firstName: fullName?.split(" ")[0] || "",
           lastName: fullName?.split(" ").slice(1).join(" ") || "",
           phone,
@@ -58,7 +132,9 @@ export async function POST(req: Request) {
         location,
         studentClass,
         requiredSubjects: requiredSubjects
-          ? requiredSubjects.split(",").map((s: string) => s.trim())
+          ? requiredSubjects
+              .split(",")
+              .map((s: string) => s.trim())
           : [],
         teachingMode,
         preferredLanguage,
@@ -68,7 +144,9 @@ export async function POST(req: Request) {
         location,
         studentClass,
         requiredSubjects: requiredSubjects
-          ? requiredSubjects.split(",").map((s: string) => s.trim())
+          ? requiredSubjects
+              .split(",")
+              .map((s: string) => s.trim())
           : [],
         teachingMode,
         preferredLanguage,
@@ -81,7 +159,15 @@ export async function POST(req: Request) {
     });
   } catch (error: unknown) {
     console.error("Client profile error:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Internal server error";
+
+    return NextResponse.json(
+      { error: message },
+      { status: 500 }
+    );
   }
 }

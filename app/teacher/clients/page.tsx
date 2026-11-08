@@ -24,6 +24,16 @@ import {
   Globe,
   Languages,
   Users,
+  GraduationCap,
+  BookOpen,
+  SlidersHorizontal,
+  X,
+  ArrowUpRight,
+  Sparkles,
+  AlertCircle,
+  RotateCcw,
+  Clock3,
+  UserRound,
 } from "lucide-react";
 
 interface ClientItem {
@@ -51,6 +61,40 @@ const EMPTY_FILTERS: Filters = {
   mode: "",
 };
 
+function ClientCardSkeleton() {
+  return (
+    <div className="animate-pulse rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="flex items-start gap-3">
+        <div className="h-11 w-11 rounded-xl bg-slate-100" />
+
+        <div className="flex-1 space-y-2">
+          <div className="h-4 w-32 rounded bg-slate-100" />
+          <div className="h-3 w-24 rounded bg-slate-100" />
+        </div>
+
+        <div className="h-6 w-16 rounded-full bg-slate-100" />
+      </div>
+
+      <div className="mt-6 space-y-2">
+        <div className="h-3 w-28 rounded bg-slate-100" />
+
+        <div className="flex gap-2">
+          <div className="h-6 w-16 rounded-full bg-slate-100" />
+          <div className="h-6 w-20 rounded-full bg-slate-100" />
+          <div className="h-6 w-14 rounded-full bg-slate-100" />
+        </div>
+      </div>
+
+      <div className="mt-6 flex gap-3 border-t border-slate-100 pt-4">
+        <div className="h-4 w-24 rounded bg-slate-100" />
+        <div className="h-4 w-20 rounded bg-slate-100" />
+      </div>
+
+      <div className="mt-5 h-10 w-full rounded-xl bg-slate-100" />
+    </div>
+  );
+}
+
 export default function TeacherClientsPage() {
   const [clients, setClients] = useState<ClientItem[]>([]);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -61,71 +105,119 @@ export default function TeacherClientsPage() {
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [sentIds, setSentIds] = useState<string[]>([]);
 
-  // Fetch students
-  const fetchClients = useCallback(async (activeFilters: Filters) => {
-    setLoading(true);
-    setLoadFailed(false);
+  // Build search parameters.
+  const buildSearchParams = (activeFilters: Filters) => {
+    const params = new URLSearchParams();
 
-    try {
-      const params = new URLSearchParams();
-
-      Object.entries(activeFilters).forEach(([key, value]) => {
-        if (value.trim()) {
-          params.set(key, value.trim());
-        }
-      });
-
-      const res = await fetch(
-        `/api/teacher/clients?${params.toString()}`,
-        {
-          cache: "no-store",
-        }
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Unable to load students.");
+    Object.entries(activeFilters).forEach(([key, value]) => {
+      if (value.trim()) {
+        params.set(key, value.trim());
       }
+    });
 
-      setClients(Array.isArray(data.clients) ? data.clients : []);
-    } catch (err) {
-      setClients([]);
-      setLoadFailed(true);
-
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Unable to load students. Please try again."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Initial fetch
-  useEffect(() => {
-    void fetchClients(EMPTY_FILTERS);
-  }, [fetchClients]);
-
-  // Search
-  const handleSearch = () => {
-    void fetchClients(filters);
+    return params.toString();
   };
 
-  // Reset filters
+  // Fetch clients.
+  const fetchClients = useCallback(
+    async (
+      activeFilters: Filters,
+      signal?: AbortSignal
+    ) => {
+      setLoading(true);
+      setLoadFailed(false);
+
+      try {
+        const query = buildSearchParams(activeFilters);
+
+        const res = await fetch(
+          `/api/teacher/clients${query ? `?${query}` : ""}`,
+          {
+            cache: "no-store",
+            signal,
+          }
+        );
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(
+            data.error || "Unable to load students."
+          );
+        }
+
+        setClients(
+          Array.isArray(data.clients) ? data.clients : []
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setClients([]);
+        setLoadFailed(true);
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Unable to load students."
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
+      }
+    },
+    []
+  );
+
+  // Automatic search with debounce.
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const timeout = setTimeout(() => {
+      void fetchClients(filters, controller.signal);
+    }, 400);
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [filters, fetchClients]);
+
+  // Update individual filters.
+  const updateFilter = (
+    key: keyof Filters,
+    value: string
+  ) => {
+    setFilters((previous) => ({
+      ...previous,
+      [key]: value,
+    }));
+  };
+
+  // Reset filters.
   const handleReset = () => {
     setFilters(EMPTY_FILTERS);
-    void fetchClients(EMPTY_FILTERS);
   };
 
-  // Send connection request
+  // Check whether any filters are active.
+  const hasActiveFilters = Object.values(filters).some(
+    (value) => value.trim() !== ""
+  );
+
+  // Send connection request.
   const sendRequest = async (clientId: string) => {
     if (sendingId || sentIds.includes(clientId)) return;
 
     setSendingId(clientId);
 
-    const toastId = toast.loading("Sending connection request...");
+    const toastId = toast.loading(
+      "Sending connection request..."
+    );
 
     try {
       const res = await fetch("/api/teacher/clients", {
@@ -139,7 +231,9 @@ export default function TeacherClientsPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Unable to send connection request.");
+        throw new Error(
+          data.error || "Unable to send connection request."
+        );
       }
 
       setSentIds((previous) =>
@@ -152,10 +246,10 @@ export default function TeacherClientsPage() {
         data.message || "Connection request sent successfully.",
         { id: toastId }
       );
-    } catch (err) {
+    } catch (error) {
       toast.error(
-        err instanceof Error
-          ? err.message
+        error instanceof Error
+          ? error.message
           : "Something went wrong. Please try again.",
         { id: toastId }
       );
@@ -164,300 +258,530 @@ export default function TeacherClientsPage() {
     }
   };
 
+  // Manual refresh.
+  const handleRefresh = () => {
+    void fetchClients(filters);
+  };
+
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            Find Students
-          </h1>
+    <div className="min-h-[calc(100vh-76px)] bg-[#F8FAFF]">
+      <div className="mx-auto w-full max-w-[1440px] space-y-7 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
 
-          <p className="mt-1 text-sm text-slate-500">
-            Browse students looking for teachers.
-          </p>
-        </div>
+        {/* PAGE HEADER */}
+        <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void fetchClients(filters)}
-          disabled={loading}
-          className="gap-2"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-          />
-          Refresh
-        </Button>
-      </div>
+              <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-indigo-600">
+                Student Marketplace
+              </span>
+            </div>
 
-      {/* Filters */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-800">
-            Filter students
-          </h2>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              Find your next student
+            </h1>
 
-          <button
-            type="button"
-            onClick={handleReset}
-            disabled={loading}
-            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 disabled:opacity-50"
-          >
-            Clear filters
-          </button>
-        </div>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
+              Discover students looking for qualified teachers.
+              Explore their learning requirements and send a
+              connection request.
+            </p>
+          </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Input
-            placeholder="Search subject"
-            value={filters.subject}
-            onChange={(e) =>
-              setFilters({
-                ...filters,
-                subject: e.target.value,
-              })
-            }
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSearch();
-            }}
-            className="h-10"
-          />
-
-          <Select
-            value={filters.class}
-            onValueChange={(value) =>
-              setFilters({
-                ...filters,
-                class: value ?? "",
-              })
-            }
-          >
-            <SelectTrigger className="h-10">
-              <SelectValue placeholder="Select class" />
-            </SelectTrigger>
-
-            <SelectContent>
-              {Array.from({ length: 12 }, (_, i) =>
-                String(i + 1)
-              ).map((value) => (
-                <SelectItem key={value} value={value}>
-                  Class {value}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Input
-            placeholder="Search city"
-            value={filters.city}
-            onChange={(e) =>
-              setFilters({
-                ...filters,
-                city: e.target.value,
-              })
-            }
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSearch();
-            }}
-            className="h-10"
-          />
-
-          <Select
-            value={filters.mode}
-            onValueChange={(value) =>
-              setFilters({
-                ...filters,
-                mode: value ?? "",
-              })
-            }
-          >
-            <SelectTrigger className="h-10">
-              <SelectValue placeholder="Teaching mode" />
-            </SelectTrigger>
-
-            <SelectContent>
-              <SelectItem value="online">Online</SelectItem>
-              <SelectItem value="offline">Offline</SelectItem>
-              <SelectItem value="both">Both</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="mt-3 flex justify-end">
           <Button
-            size="sm"
-            onClick={handleSearch}
+            variant="outline"
+            onClick={handleRefresh}
             disabled={loading}
-            className="h-9 gap-2 bg-indigo-600 px-5 hover:bg-indigo-700"
+            className="h-10 gap-2 self-start rounded-xl border-slate-200 bg-white px-4 text-slate-700 hover:bg-slate-50 sm:self-auto"
           >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Search className="h-4 w-4" />
-            )}
-            Search
+            <RefreshCw
+              className={`h-4 w-4 ${
+                loading ? "animate-spin" : ""
+              }`}
+            />
+            Refresh results
           </Button>
-        </div>
-      </div>
+        </section>
 
-      {/* Results heading */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-indigo-600" />
+        {/* SEARCH SECTION */}
+        <section className="overflow-hidden rounded-2xl border border-[#E3E9F8] bg-white shadow-sm">
+          {/* Search heading */}
+          <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                <SlidersHorizontal size={19} />
+              </div>
 
-          <h2 className="text-sm font-semibold text-slate-800">
-            Available students
-          </h2>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">
+                  Find matching students
+                </h2>
 
-          {!loading && !loadFailed && (
-            <Badge variant="secondary" className="text-xs">
-              {clients.length}
-            </Badge>
-          )}
-        </div>
-      </div>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Results update automatically as you change
+                  your filters.
+                </p>
+              </div>
+            </div>
+          </div>
 
-      {/* Loading */}
-      {loading && (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500">
-          <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
-          Loading students...
-        </div>
-      )}
+          {/* Search fields */}
+          <div className="p-5 sm:p-6">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-      {/* Empty state */}
-      {!loading && !loadFailed && clients.length === 0 && (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-14 text-center">
-          <Users className="mx-auto h-9 w-9 text-slate-300" />
+              {/* SUBJECT */}
+              <div>
+                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                  Subject
+                </label>
 
-          <h3 className="mt-3 font-semibold text-slate-800">
-            No students found
-          </h3>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
-          <p className="mt-1 text-sm text-slate-500">
-            Try changing your filters or check again later.
-          </p>
-        </div>
-      )}
+                  <Input
+                    placeholder="e.g. Mathematics"
+                    value={filters.subject}
+                    onChange={(e) =>
+                      updateFilter("subject", e.target.value)
+                    }
+                    className="h-11 rounded-xl border-slate-200 pl-9 pr-9 text-sm focus-visible:ring-indigo-500"
+                  />
 
-      {/* Client cards */}
-      {!loading && !loadFailed && clients.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {clients.map((client) => {
-            const name =
-              [client.firstName, client.lastName]
-                .filter(Boolean)
-                .join(" ") || "Student / Parent";
+                  {filters.subject && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateFilter("subject", "")
+                      }
+                      aria-label="Clear subject"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                </div>
+              </div>
 
-            const isSending = sendingId === client.id;
-            const isSent = sentIds.includes(client.id);
+              {/* CLASS */}
+              <div>
+                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                  Student class
+                </label>
 
-            return (
-              <div
-                key={client.id}
-                className="rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-indigo-200"
+                <Select
+                  value={filters.class}
+                  onValueChange={(value) =>
+                    updateFilter("class", value ?? "")
+                  }
+                >
+                  <SelectTrigger className="h-11 rounded-xl border-slate-200 text-sm focus:ring-indigo-500">
+                    <SelectValue placeholder="All classes" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, i) =>
+                      String(i + 1)
+                    ).map((value) => (
+                      <SelectItem key={value} value={value}>
+                        Class {value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* CITY */}
+              <div>
+                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                  City or location
+                </label>
+
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                  <Input
+                    placeholder="e.g. Indore"
+                    value={filters.city}
+                    onChange={(e) =>
+                      updateFilter("city", e.target.value)
+                    }
+                    className="h-11 rounded-xl border-slate-200 pl-9 pr-9 text-sm focus-visible:ring-indigo-500"
+                  />
+
+                  {filters.city && (
+                    <button
+                      type="button"
+                      onClick={() => updateFilter("city", "")}
+                      aria-label="Clear city"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* TEACHING MODE */}
+              <div>
+                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                  Teaching mode
+                </label>
+
+                <Select
+                  value={filters.mode}
+                  onValueChange={(value) =>
+                    updateFilter("mode", value ?? "")
+                  }
+                >
+                  <SelectTrigger className="h-11 rounded-xl border-slate-200 text-sm focus:ring-indigo-500">
+                    <SelectValue placeholder="Any mode" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <SelectItem value="online">
+                      Online
+                    </SelectItem>
+
+                    <SelectItem value="offline">
+                      Offline
+                    </SelectItem>
+
+                    <SelectItem value="both">
+                      Both
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* FILTER FOOTER */}
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <Sparkles size={14} className="text-indigo-500" />
+
+                <span>
+                  Smart search updates as you type
+                </span>
+
+                {loading && (
+                  <Loader2
+                    size={13}
+                    className="animate-spin text-indigo-600"
+                  />
+                )}
+              </div>
+
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 transition hover:text-indigo-800"
+                >
+                  <RotateCcw size={13} />
+                  Clear all filters
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* RESULTS HEADER */}
+        <section>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">
+                  Available students
+                </h2>
+
+                {!loading && !loadFailed && (
+                  <Badge className="border-0 bg-indigo-50 text-indigo-700 hover:bg-indigo-50">
+                    {clients.length} found
+                  </Badge>
+                )}
+              </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Explore student requirements and connect with
+                potential learners.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              <Clock3 size={13} />
+              <span>Recently updated results</span>
+            </div>
+          </div>
+        </section>
+
+        {/* LOADING SKELETONS */}
+        {loading && (
+          <div
+            className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+            aria-label="Loading students"
+            aria-busy="true"
+          >
+            {Array.from({ length: 6 }).map((_, index) => (
+              <ClientCardSkeleton key={index} />
+            ))}
+          </div>
+        )}
+
+        {/* ERROR STATE */}
+        {!loading && loadFailed && (
+          <div className="rounded-2xl border border-red-100 bg-white px-5 py-16 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+              <AlertCircle size={23} />
+            </div>
+
+            <h3 className="mt-4 text-base font-bold text-slate-900">
+              Unable to load students
+            </h3>
+
+            <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
+              Something went wrong while retrieving student
+              information. Please check your connection and try
+              again.
+            </p>
+
+            <Button
+              onClick={handleRefresh}
+              className="mt-5 gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700"
+            >
+              <RefreshCw size={15} />
+              Try again
+            </Button>
+          </div>
+        )}
+
+        {/* EMPTY STATE */}
+        {!loading && !loadFailed && clients.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-16 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-500">
+              <Users size={26} />
+            </div>
+
+            <h3 className="mt-4 text-base font-bold text-slate-900">
+              No students found
+            </h3>
+
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
+              {hasActiveFilters
+                ? "We couldn't find students matching these filters. Try a different subject, city, class, or teaching mode."
+                : "There are no student requests available right now. Check back later for new opportunities."}
+            </p>
+
+            {hasActiveFilters && (
+              <Button
+                variant="outline"
+                onClick={handleReset}
+                className="mt-5 gap-2 rounded-xl border-indigo-200 text-indigo-600 hover:bg-indigo-50"
               >
-                {/* Name and location */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold text-slate-900">
-                      {name}
-                    </h3>
+                <RotateCcw size={14} />
+                Clear filters
+              </Button>
+            )}
+          </div>
+        )}
 
-                    <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+        {/* CLIENT CARDS */}
+        {!loading && !loadFailed && clients.length > 0 && (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {clients.map((client) => {
+              const name =
+                [client.firstName, client.lastName]
+                  .filter(Boolean)
+                  .join(" ") || "Student / Parent";
 
-                      <span className="truncate">
-                        {client.location || "Location not specified"}
-                      </span>
-                    </p>
+              const isSending = sendingId === client.id;
+              const isSent = sentIds.includes(client.id);
+
+              return (
+                <article
+                  key={client.id}
+                  className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-100/40"
+                >
+                  {/* CARD HEADER */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-50 to-indigo-100 text-indigo-600">
+                        <UserRound size={21} />
+                      </div>
+
+                      <div className="min-w-0">
+                        <h3 className="truncate text-sm font-bold text-slate-900">
+                          {name}
+                        </h3>
+
+                        <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                          <MapPin
+                            size={12}
+                            className="shrink-0"
+                          />
+
+                          <span className="truncate">
+                            {client.location ||
+                              "Location not specified"}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <Badge className="shrink-0 border-0 bg-blue-50 text-blue-700 hover:bg-blue-50">
+                      {client.studentClass
+                        ? `Class ${client.studentClass}`
+                        : "Student"}
+                    </Badge>
                   </div>
 
-                  <Badge className="shrink-0 border-0 bg-indigo-50 text-indigo-700 hover:bg-indigo-50">
-                    {client.studentClass
-                      ? `Class ${client.studentClass}`
-                      : "Student"}
-                  </Badge>
-                </div>
+                  {/* DIVIDER */}
+                  <div className="my-5 border-t border-slate-100" />
 
-                {/* Subjects */}
-                <div className="mt-4">
-                  <p className="mb-2 text-xs font-medium text-slate-500">
-                    Required subjects
-                  </p>
+                  {/* SUBJECTS */}
+                  <div>
+                    <div className="mb-3 flex items-center gap-2">
+                      <BookOpen
+                        size={14}
+                        className="text-indigo-500"
+                      />
 
-                  <div className="flex flex-wrap gap-1.5">
-                    {client.requiredSubjects?.length ? (
-                      client.requiredSubjects.map((subject) => (
-                        <Badge
-                          key={subject}
-                          variant="secondary"
-                          className="border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700"
-                        >
-                          {subject}
-                        </Badge>
-                      ))
-                    ) : (
-                      <span className="text-xs text-slate-400">
-                        Not specified
+                      <p className="text-xs font-bold text-slate-700">
+                        Learning requirements
+                      </p>
+                    </div>
+
+                    <div className="flex min-h-7 flex-wrap gap-1.5">
+                      {client.requiredSubjects?.length ? (
+                        client.requiredSubjects.map((subject) => (
+                          <Badge
+                            key={subject}
+                            variant="secondary"
+                            className="border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700"
+                          >
+                            {subject}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-xs text-slate-400">
+                          Subjects not specified
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* TEACHING PREFERENCES */}
+                  <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-2 text-xs text-slate-500">
+                        <Globe
+                          size={14}
+                          className="text-slate-400"
+                        />
+                        Teaching preference
                       </span>
+
+                      <span className="text-xs font-semibold capitalize text-slate-700">
+                        {client.teachingMode || "Not specified"}
+                      </span>
+                    </div>
+
+                    {client.preferredLanguage && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-2 text-xs text-slate-500">
+                          <Languages
+                            size={14}
+                            className="text-slate-400"
+                          />
+                          Preferred language
+                        </span>
+
+                        <span className="max-w-[55%] truncate text-right text-xs font-semibold text-slate-700">
+                          {client.preferredLanguage}
+                        </span>
+                      </div>
                     )}
                   </div>
-                </div>
 
-                {/* Details */}
-                <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-100 pt-3">
-                  <span className="flex items-center gap-1.5 text-xs text-slate-600">
-                    <Globe className="h-3.5 w-3.5 text-slate-400" />
+                  {/* CONNECTION BUTTON */}
+                  <div className="mt-auto pt-5">
+                    <Button
+                      className={`h-10 w-full gap-2 rounded-xl text-xs font-semibold transition-all ${
+                        isSent
+                          ? "border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-50"
+                          : "bg-indigo-600 text-white shadow-sm shadow-indigo-600/15 hover:bg-indigo-700"
+                      }`}
+                      disabled={
+                        isSending ||
+                        isSent ||
+                        Boolean(sendingId)
+                      }
+                      onClick={() => void sendRequest(client.id)}
+                    >
+                      {isSending ? (
+                        <>
+                          <Loader2
+                            size={15}
+                            className="animate-spin"
+                          />
+                          Sending request...
+                        </>
+                      ) : isSent ? (
+                        <>
+                          <CheckCircle2 size={15} />
+                          Request sent
+                        </>
+                      ) : (
+                        <>
+                          <Send size={14} />
+                          Send connection request
+                          <ArrowUpRight
+                            size={14}
+                            className="ml-auto"
+                          />
+                        </>
+                      )}
+                    </Button>
 
-                    <span className="capitalize">
-                      {client.teachingMode || "Mode not specified"}
-                    </span>
-                  </span>
+                    {isSent && (
+                      <p className="mt-2 text-center text-[10px] font-medium text-indigo-600">
+                        Your request has been submitted successfully.
+                      </p>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
 
-                  {client.preferredLanguage && (
-                    <span className="flex items-center gap-1.5 text-xs text-slate-600">
-                      <Languages className="h-3.5 w-3.5 text-slate-400" />
-                      {client.preferredLanguage}
-                    </span>
-                  )}
-                </div>
-
-                {/* Connection request */}
-                <Button
-                  size="sm"
-                  className={`mt-4 h-9 w-full gap-2 ${
-                    isSent
-                      ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
-                      : "bg-indigo-600 text-white hover:bg-indigo-700"
-                  }`}
-                  disabled={isSending || isSent || Boolean(sendingId)}
-                  onClick={() => void sendRequest(client.id)}
-                >
-                  {isSending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Sending...
-                    </>
-                  ) : isSent ? (
-                    <>
-                      <CheckCircle2 className="h-4 w-4" />
-                      Request sent
-                    </>
-                  ) : (
-                    <>
-                      <Send className="h-3.5 w-3.5" />
-                      Request connection
-                    </>
-                  )}
-                </Button>
+        {/* BOTTOM INFORMATION */}
+        {!loading && !loadFailed && clients.length > 0 && (
+          <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-[#E3E9F8] bg-white px-4 py-4 sm:flex-row sm:items-center sm:px-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                <GraduationCap size={18} />
               </div>
-            );
-          })}
-        </div>
-      )}
+
+              <div>
+                <p className="text-xs font-semibold text-slate-800">
+                  Build meaningful learning connections
+                </p>
+
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Send a request to express your interest in
+                  teaching a student.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] font-medium text-slate-400">
+              <CheckCircle2 size={14} className="text-indigo-500" />
+              Secure connection requests
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

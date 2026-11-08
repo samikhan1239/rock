@@ -192,7 +192,7 @@ function UploadStatus({
     return (
       <div className="mt-3 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
         <CheckCircle2 className="h-3.5 w-3.5" />
-        Successfully uploaded to Cloudinary
+        Successfully uploaded
       </div>
     );
   }
@@ -208,7 +208,7 @@ function UploadStatus({
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="flex items-center gap-1.5 font-medium text-indigo-600">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Uploading to Cloudinary...
+            Uploading...
           </span>
 
           <span className="font-semibold tabular-nums text-indigo-600">
@@ -868,7 +868,7 @@ export default function StepVideos({
                 ) : isUploaded ? (
                   <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    Uploaded to Cloudinary
+                    Uploaded
                   </span>
                 ) : isUploading ? (
                   <span className="flex items-center gap-1.5 text-xs font-medium text-indigo-600">
@@ -887,7 +887,7 @@ export default function StepVideos({
         </div>
 
         <p className="mt-3 border-t border-slate-100 pt-3 text-[11px] leading-5 text-slate-400">
-          Your media is securely uploaded to Cloudinary. Upload progress and confirmation are displayed above.
+          Your media is securely uploaded . Upload progress and confirmation are displayed above.
         </p>
       </div>
     </div>

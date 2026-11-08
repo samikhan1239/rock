@@ -1,20 +1,22 @@
+import type { ReactNode } from "react";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
+
 import {
   Search,
   MessageSquare,
-  Users,
   Wallet,
   ArrowUpRight,
   MapPin,
   GraduationCap,
   BookOpen,
-  CheckCircle2,
-  Clock3,
   UserRound,
   Settings2,
+  Clock3,
+  Users,
+  Sparkles,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -56,54 +58,65 @@ export default async function ClientOverviewPage() {
     (dbUser.creditWallet?.purchasedCredits || 0) -
     (dbUser.creditWallet?.reservedCredits || 0);
 
-  const [pendingRequests, hiredCount, totalRequests] = await Promise.all([
-    prisma.connectionRequest.count({
-      where: {
-        clientId: profile.id,
-        status: { in: ["PENDING", "UNDER_REVIEW"] },
-      },
-    }),
-
-    prisma.connectionRequest.count({
-      where: {
-        clientId: profile.id,
-        status: {
-          in: ["APPROVED", "CONNECTION_ESTABLISHED", "HIRING_CONFIRMED"],
+  const [pendingRequests, activeConnections, totalRequests] =
+    await Promise.all([
+      prisma.connectionRequest.count({
+        where: {
+          clientId: profile.id,
+          status: {
+            in: ["PENDING", "UNDER_REVIEW"],
+          },
         },
-      },
-    }),
+      }),
 
-    prisma.connectionRequest.count({
-      where: {
-        clientId: profile.id,
-      },
-    }),
-  ]);
+      prisma.connectionRequest.count({
+        where: {
+          clientId: profile.id,
+          status: {
+            in: [
+              "APPROVED",
+              "CONNECTION_ESTABLISHED",
+              "HIRING_CONFIRMED",
+            ],
+          },
+        },
+      }),
+
+      prisma.connectionRequest.count({
+        where: {
+          clientId: profile.id,
+        },
+      }),
+    ]);
 
   const firstName = clerkUser.firstName || "there";
 
   return (
-    <div className="min-h-full space-y-7 pb-8">
-      {/* Welcome Header */}
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto w-full max-w-7xl space-y-6 pb-8">
+      {/* Welcome */}
+      <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <div className="mb-2 flex items-center gap-2">
-            <Badge className="border border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-50">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50">
+              <Sparkles className="h-4 w-4 text-indigo-600" />
+            </div>
+
+            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
               Client Dashboard
-            </Badge>
+            </span>
           </div>
 
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
             Welcome back, {firstName}
           </h1>
 
-          <p className="mt-1.5 text-sm text-slate-500">
-            Find the right tutor and manage your teaching requests.
+          <p className="mt-1 text-sm text-slate-500">
+            Manage your tutor search and learning requests.
           </p>
         </div>
 
-        <Link href="/client/find-teachers">
-          <Button className="gap-2 bg-indigo-600 shadow-sm hover:bg-indigo-700">
+        <Link href="/client/find-teacher">
+          <Button className="h-10 gap-2 rounded-lg bg-indigo-600 px-4 shadow-sm hover:bg-indigo-700">
             <Search className="h-4 w-4" />
             Find a Teacher
             <ArrowUpRight className="h-4 w-4" />
@@ -111,49 +124,66 @@ export default async function ClientOverviewPage() {
         </Link>
       </section>
 
-      {/* Profile Summary */}
-      <Card className="overflow-hidden border-slate-200 shadow-sm">
-        <CardContent className="p-5">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+      {/* Statistics */}
+      <section>
+        <div className="mb-3">
+          <h2 className="text-sm font-semibold text-slate-900">
+            Account Overview
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <StatCard
+            title="Available Credits"
+            value={availableCredits}
+            description="Ready to use"
+            icon={<Wallet className="h-4 w-4" />}
+            iconClass="bg-indigo-50 text-indigo-600"
+          />
+
+          <StatCard
+            title="Pending Requests"
+            value={pendingRequests}
+            description="Awaiting review"
+            icon={<Clock3 className="h-4 w-4" />}
+            iconClass="bg-amber-50 text-amber-600"
+          />
+
+          <StatCard
+            title="Active Connections"
+            value={activeConnections}
+            description="Approved requests"
+            icon={<Users className="h-4 w-4" />}
+            iconClass="bg-blue-50 text-blue-600"
+          />
+
+          <StatCard
+            title="Total Requests"
+            value={totalRequests}
+            description="All submitted requests"
+            icon={<MessageSquare className="h-4 w-4" />}
+            iconClass="bg-violet-50 text-violet-600"
+          />
+        </div>
+      </section>
+
+      {/* Learning Requirements */}
+      <Card className="overflow-hidden rounded-xl border-slate-200 shadow-sm">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+            <div className="flex gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
                 <UserRound className="h-5 w-5" />
               </div>
 
-              <div>
-                <h2 className="font-semibold text-slate-900">
-                  Your Learning Requirements
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-slate-900">
+                  Learning Requirements
                 </h2>
 
                 <p className="mt-1 text-xs text-slate-500">
-                  Your profile helps us find suitable tutors.
+                  Your preferences used to find suitable teachers.
                 </p>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Badge
-                    variant="outline"
-                    className="gap-1 border-slate-200 bg-slate-50 text-slate-600"
-                  >
-                    <GraduationCap className="h-3 w-3" />
-                    {profile.studentClass}
-                  </Badge>
-
-                  <Badge
-                    variant="outline"
-                    className="gap-1 border-slate-200 bg-slate-50 text-slate-600"
-                  >
-                    <MapPin className="h-3 w-3" />
-                    {profile.location}
-                  </Badge>
-
-                  <Badge
-                    variant="outline"
-                    className="gap-1 border-slate-200 bg-slate-50 text-slate-600"
-                  >
-                    <BookOpen className="h-3 w-3" />
-                    {profile.requiredSubjects.length} Subjects
-                  </Badge>
-                </div>
               </div>
             </div>
 
@@ -161,175 +191,114 @@ export default async function ClientOverviewPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                className="h-8 gap-2 rounded-lg border-indigo-200 text-indigo-700 hover:bg-indigo-50"
               >
-                <Settings2 className="h-4 w-4" />
-                Edit Requirements
+                <Settings2 className="h-3.5 w-3.5" />
+                Edit Profile
               </Button>
             </Link>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-4 border-t border-slate-100 pt-4 sm:grid-cols-3">
+            <RequirementItem
+              icon={<GraduationCap className="h-4 w-4" />}
+              label="Class / Grade"
+              value={profile.studentClass}
+            />
+
+            <RequirementItem
+              icon={<MapPin className="h-4 w-4" />}
+              label="Location"
+              value={profile.location}
+            />
+
+            <RequirementItem
+              icon={<BookOpen className="h-4 w-4" />}
+              label="Teaching Mode"
+              value={profile.teachingMode}
+            />
+          </div>
+
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <p className="mb-2 text-xs font-medium text-slate-500">
+              Required Subjects
+            </p>
+
+            <div className="flex flex-wrap gap-2">
+              {profile.requiredSubjects.map((subject) => (
+                <Badge
+                  key={subject}
+                  variant="secondary"
+                  className="rounded-md border border-indigo-100 bg-indigo-50 px-2.5 py-1 font-medium text-indigo-700 hover:bg-indigo-50"
+                >
+                  {subject}
+                </Badge>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Statistics */}
+      {/* Quick Actions */}
       <section>
-        <div className="mb-4">
-          <h2 className="text-base font-semibold text-slate-900">
-            Overview
+        <div className="mb-3">
+          <h2 className="text-sm font-semibold text-slate-900">
+            Quick Access
           </h2>
+
           <p className="mt-1 text-xs text-slate-500">
-            Your account activity at a glance.
+            Everything you need to manage your tutoring experience.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {/* Credits */}
-          <StatCard
-            title="Available Credits"
-            value={availableCredits}
-            description="Ready to use"
-            icon={<Wallet className="h-5 w-5" />}
-            iconClass="bg-indigo-50 text-indigo-600"
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <ActionLink
+            href="/client/find-teacher"
+            icon={<Search className="h-5 w-5" />}
+            title="Find Teachers"
+            description="Browse verified tutor profiles"
           />
 
-          {/* Pending */}
-          <StatCard
-            title="Pending Requests"
-            value={pendingRequests}
-            description="Waiting for admin review"
-            icon={<Clock3 className="h-5 w-5" />}
-            iconClass="bg-amber-50 text-amber-600"
-          />
-
-          {/* Hired */}
-          <StatCard
-            title="Approved Connections"
-            value={hiredCount}
-            description="Approved teacher requests"
-            icon={<Users className="h-5 w-5" />}
-            iconClass="bg-emerald-50 text-emerald-600"
-          />
-
-          {/* Total */}
-          <StatCard
-            title="Total Requests"
-            value={totalRequests}
-            description="Requests submitted"
+          <ActionLink
+            href="/client/requests"
             icon={<MessageSquare className="h-5 w-5" />}
-            iconClass="bg-blue-50 text-blue-600"
+            title="My Requests"
+            description="View and track your requests"
+          />
+
+          <ActionLink
+            href="/client/credits"
+            icon={<Wallet className="h-5 w-5" />}
+            title="Manage Credits"
+            description="Check your available credits"
           />
         </div>
       </section>
 
-      {/* Main Content */}
-      <section className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Quick Actions */}
-        <Card className="border-slate-200 shadow-sm lg:col-span-2">
-          <CardContent className="p-5">
-            <div className="mb-5">
-              <h2 className="font-semibold text-slate-900">
-                Quick Actions
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Manage your tutor search and account.
-              </p>
-            </div>
+      {/* Empty / Activity Prompt */}
+      {totalRequests === 0 && (
+        <div className="flex flex-col gap-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">
+              Start finding your ideal teacher
+            </h3>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <ActionLink
-                href="/client/find-teachers"
-                icon={<Search className="h-5 w-5" />}
-                title="Find Teachers"
-                description="Explore verified tutors"
-              />
-
-              <ActionLink
-                href="/client/requests"
-                icon={<MessageSquare className="h-5 w-5" />}
-                title="My Requests"
-                description="Track your connections"
-              />
-
-              <ActionLink
-                href="/client/onboarding"
-                icon={<Settings2 className="h-5 w-5" />}
-                title="Edit Requirements"
-                description="Update your preferences"
-              />
-
-              <ActionLink
-                href="/client/credits"
-                icon={<Wallet className="h-5 w-5" />}
-                title="Manage Credits"
-                description="View or purchase credits"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Request Process */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-5">
-            <h2 className="font-semibold text-slate-900">
-              How it works
-            </h2>
-
-            <p className="mt-1 text-xs text-slate-500">
-              Get connected with the right tutor.
+            <p className="mt-1 text-xs text-slate-600">
+              Explore verified tutors based on your learning requirements.
             </p>
+          </div>
 
-            <div className="mt-5 space-y-5">
-              <ProcessStep
-                number="01"
-                title="Find a tutor"
-                description="Browse verified teacher profiles."
-                completed
-              />
-
-              <ProcessStep
-                number="02"
-                title="Send a request"
-                description="Submit your connection request."
-                completed={totalRequests > 0}
-              />
-
-              <ProcessStep
-                number="03"
-                title="Admin review"
-                description="Our admin reviews your request."
-                completed={hiredCount > 0}
-              />
-
-              <ProcessStep
-                number="04"
-                title="Get connected"
-                description="Connect after approval."
-                completed={hiredCount > 0}
-                last
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Bottom CTA */}
-      <div className="flex flex-col gap-4 rounded-xl border border-indigo-100 bg-indigo-50/70 p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 className="font-semibold text-slate-900">
-            Ready to find your next tutor?
-          </h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Explore verified teachers based on your learning requirements.
-          </p>
+          <Link href="/client/find-teacher">
+            <Button
+              size="sm"
+              className="h-9 gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700"
+            >
+              Explore Teachers
+              <ArrowUpRight className="h-4 w-4" />
+            </Button>
+          </Link>
         </div>
-
-        <Link href="/client/find-teachers">
-          <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700">
-            Explore Teachers
-            <ArrowUpRight className="h-4 w-4" />
-          </Button>
-        </Link>
-      </div>
+      )}
     </div>
   );
 }
@@ -346,28 +315,59 @@ function StatCard({
   title: string;
   value: number;
   description: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   iconClass: string;
 }) {
   return (
-    <Card className="border-slate-200 shadow-sm transition-shadow hover:shadow-md">
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-slate-500">{title}</p>
+    <Card className="rounded-xl border-slate-200 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-slate-500 sm:text-sm">
+            {title}
+          </p>
 
           <div className={`rounded-lg p-2 ${iconClass}`}>
             {icon}
           </div>
         </div>
 
-        <div className="mt-4">
-          <p className="text-3xl font-bold tracking-tight text-slate-900">
+        <div className="mt-3">
+          <p className="text-2xl font-bold tracking-tight text-slate-900">
             {value}
           </p>
-          <p className="mt-1 text-xs text-slate-500">{description}</p>
+
+          <p className="mt-1 text-[11px] text-slate-500">
+            {description}
+          </p>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/* ---------------- REQUIREMENT ITEM ---------------- */
+
+function RequirementItem({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <div className="mt-0.5 text-indigo-500">{icon}</div>
+
+      <div className="min-w-0">
+        <p className="text-xs text-slate-500">{label}</p>
+
+        <p className="mt-1 truncate text-sm font-medium text-slate-800">
+          {value}
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -380,75 +380,30 @@ function ActionLink({
   description,
 }: {
   href: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   description: string;
 }) {
   return (
-    <Link href={href}>
-      <div className="group flex h-full items-center gap-3 rounded-xl border border-slate-200 p-4 transition-all hover:border-indigo-200 hover:bg-indigo-50/50">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 transition-colors group-hover:bg-indigo-100">
-          {icon}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-slate-800">
-            {title}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            {description}
-          </p>
-        </div>
-
-        <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-400 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-indigo-600" />
-      </div>
-    </Link>
-  );
-}
-
-/* ---------------- PROCESS STEP ---------------- */
-
-function ProcessStep({
-  number,
-  title,
-  description,
-  completed,
-  last = false,
-}: {
-  number: string;
-  title: string;
-  description: string;
-  completed: boolean;
-  last?: boolean;
-}) {
-  return (
-    <div className="relative flex gap-3">
-      {!last && (
-        <div className="absolute left-[15px] top-8 h-9 w-px bg-slate-200" />
-      )}
-
-      <div
-        className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-          completed
-            ? "bg-indigo-100 text-indigo-700"
-            : "bg-slate-100 text-slate-500"
-        }`}
-      >
-        {completed ? (
-          <CheckCircle2 className="h-4 w-4" />
-        ) : (
-          number
-        )}
+    <Link
+      href={href}
+      className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-indigo-200 hover:bg-indigo-50/40"
+    >
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 transition-colors group-hover:bg-indigo-100">
+        {icon}
       </div>
 
-      <div className="min-w-0 pb-1">
+      <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-slate-800">
           {title}
         </p>
-        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+
+        <p className="mt-1 text-xs text-slate-500">
           {description}
         </p>
       </div>
-    </div>
+
+      <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-400 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-indigo-600" />
+    </Link>
   );
 }

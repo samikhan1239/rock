@@ -35,6 +35,8 @@ import {
   CloudUpload,
   FileVideo,
   Timer,
+  UserRound,
+  Waves,
 } from "lucide-react";
 
 import { uploadAIInterviewRecording } from "@/lib/cloudinary-upload";
@@ -70,7 +72,8 @@ type InterviewResult = {
   fullReport?: unknown;
 };
 
-type SpeechRecognitionInstance = {
+
+type LocalSpeechRecognitionInstance = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
@@ -78,9 +81,7 @@ type SpeechRecognitionInstance = {
     | ((event: {
         resultIndex: number;
         results: ArrayLike<
-          ArrayLike<{ transcript: string }> & {
-            isFinal?: boolean;
-          }
+          ArrayLike<{ transcript: string }> & { isFinal?: boolean }
         >;
       }) => void)
     | null;
@@ -91,16 +92,12 @@ type SpeechRecognitionInstance = {
   abort: () => void;
 };
 
-declare global {
-  interface Window {
-    SpeechRecognition?: new () => SpeechRecognitionInstance;
-    webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
-  }
-}
+type SpeechRecognitionConstructor = new () => LocalSpeechRecognitionInstance;
+
 
 const EVALUATION_POLL_INTERVAL = 5000;
 const MAX_EVALUATION_ATTEMPTS = 60;
-const ANSWER_SILENCE_DELAY = 1800;
+const ANSWER_SILENCE_DELAY = 2200;
 const MAX_RECORDING_SIZE = 45 * 1024 * 1024;
 
 const evaluationMessages = [
@@ -140,7 +137,6 @@ export default function AIInterviewPage() {
     useState<InterviewResult | null>(null);
 
   const [evaluationAttempts, setEvaluationAttempts] = useState(0);
-
   const [evaluationElapsed, setEvaluationElapsed] = useState(0);
 
   const [evaluationMessageIndex, setEvaluationMessageIndex] =
@@ -173,8 +169,8 @@ export default function AIInterviewPage() {
   const recordingUploadedRef = useRef(false);
   const interviewSubmittedRef = useRef(false);
 
-  const recognitionRef =
-    useRef<SpeechRecognitionInstance | null>(null);
+const recognitionRef =
+  useRef<LocalSpeechRecognitionInstance | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(
     null
@@ -199,15 +195,11 @@ export default function AIInterviewPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const finalTranscriptRef = useRef("");
-
   const interimTranscriptRef = useRef("");
 
   const processingAnswerRef = useRef(false);
-
   const finishingRef = useRef(false);
-
   const redirectingRef = useRef(false);
-
   const mountedRef = useRef(true);
 
   // --------------------------------------------------
@@ -265,7 +257,7 @@ export default function AIInterviewPage() {
       behavior: "smooth",
       block: "end",
     });
-  }, [messages, transcript]);
+  }, [messages, transcript, loading]);
 
   // --------------------------------------------------
   // CAMERA PREVIEW
@@ -583,9 +575,14 @@ export default function AIInterviewPage() {
       return;
     }
 
-    const RecognitionAPI =
-      window.SpeechRecognition ||
-      window.webkitSpeechRecognition;
+ const speechWindow = window as unknown as {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
+const RecognitionAPI =
+  speechWindow.SpeechRecognition ||
+  speechWindow.webkitSpeechRecognition;
 
     if (!RecognitionAPI) {
       setError(
@@ -864,7 +861,9 @@ export default function AIInterviewPage() {
         setCameraOn(true);
       }
 
-      setStatusText("Connecting to your AI interviewer...");
+      setStatusText(
+        "Gemini is preparing your first interview question..."
+      );
 
       startRecorder(stream);
 
@@ -1142,15 +1141,15 @@ export default function AIInterviewPage() {
           }
         );
 
-   const data = await response.json();
+        const data = await response.json();
 
-if (!response.ok || data.success === false) {
-  throw new Error(
-    data.message ||
-    data.error ||
-    "Interview submission failed."
-  );
-}
+        if (!response.ok || data.success === false) {
+          throw new Error(
+            data.message ||
+              data.error ||
+              "Interview submission failed."
+          );
+        }
 
         interviewSubmittedRef.current = true;
       }
@@ -1374,8 +1373,8 @@ if (!response.ok || data.success === false) {
                     </p>
                   </div>
 
-                  <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  <span className="flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
                     Ready
                   </span>
                 </div>
@@ -1460,7 +1459,6 @@ if (!response.ok || data.success === false) {
     ];
 
     const stageOrder = ["uploading", "submitting"];
-
     const activeIndex = stageOrder.indexOf(submissionStage);
 
     return (
@@ -1505,7 +1503,7 @@ if (!response.ok || data.success === false) {
                   key={item.id}
                   className={`flex items-center gap-3 rounded-xl border p-4 ${
                     completed
-                      ? "border-emerald-200 bg-emerald-50/60"
+                      ? "border-indigo-200 bg-indigo-50/60"
                       : active
                         ? "border-indigo-200 bg-indigo-50/60"
                         : "border-slate-100 bg-slate-50"
@@ -1514,7 +1512,7 @@ if (!response.ok || data.success === false) {
                   <div
                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
                       completed
-                        ? "bg-emerald-100 text-emerald-600"
+                        ? "bg-indigo-100 text-indigo-600"
                         : active
                           ? "bg-indigo-100 text-indigo-600"
                           : "bg-slate-200 text-slate-500"
@@ -1690,11 +1688,10 @@ if (!response.ok || data.success === false) {
 
           <div className="mt-7 space-y-4">
             {evaluationSteps.map((item, index) => {
-              const activeIndex =
-                Math.min(
-                  evaluationSteps.length - 1,
-                  Math.floor(evaluationAttempts / 5)
-                );
+              const activeIndex = Math.min(
+                evaluationSteps.length - 1,
+                Math.floor(evaluationAttempts / 5)
+              );
 
               const completed =
                 !evaluationTimedOut && index < activeIndex;
@@ -1707,7 +1704,7 @@ if (!response.ok || data.success === false) {
                   <div
                     className={`flex h-8 w-8 items-center justify-center rounded-full ${
                       completed
-                        ? "bg-emerald-100 text-emerald-600"
+                        ? "bg-indigo-100 text-indigo-600"
                         : active
                           ? "bg-indigo-100 text-indigo-600"
                           : "bg-slate-100 text-slate-400"
@@ -1785,7 +1782,7 @@ if (!response.ok || data.success === false) {
 
     const scoreColor =
       score >= 8
-        ? "text-emerald-600"
+        ? "text-indigo-600"
         : score >= 6
           ? "text-indigo-600"
           : score >= 4
@@ -1909,9 +1906,9 @@ if (!response.ok || data.success === false) {
           )}
 
           <section className="mt-5 grid gap-5 md:grid-cols-2">
-            <div className="rounded-2xl border border-emerald-200 bg-white p-6">
+            <div className="rounded-2xl border border-indigo-100 bg-white p-6">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                <CheckCircle2 className="h-5 w-5 text-indigo-600" />
                 <h2 className="font-bold text-slate-900">
                   Your strengths
                 </h2>
@@ -1924,7 +1921,7 @@ if (!response.ok || data.success === false) {
                       key={`${item}-${index}`}
                       className="flex items-start gap-2"
                     >
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
                       <p className="text-sm leading-6 text-slate-600">
                         {item}
                       </p>
@@ -2001,173 +1998,400 @@ if (!response.ok || data.success === false) {
   // LIVE INTERVIEW ROOM
   // --------------------------------------------------
 
+  const interviewerState = speaking
+    ? "speaking"
+    : loading
+      ? "thinking"
+      : listening
+        ? "listening"
+        : "waiting";
+
+  const interviewerStatus = {
+    speaking: {
+      label: "AI interviewer is speaking",
+      description: "Listen carefully to the question.",
+      badge: "Speaking",
+      color: "bg-indigo-50 text-indigo-700 border-indigo-100",
+      iconColor: "text-indigo-600",
+    },
+    thinking: {
+      label: "Gemini is thinking",
+      description: "Preparing your next personalized question.",
+      badge: "Thinking",
+      color: "bg-amber-50 text-amber-700 border-amber-100",
+      iconColor: "text-amber-600",
+    },
+    listening: {
+      label: "Listening to your answer",
+      description: "Speak naturally. Your answer will be detected automatically.",
+      badge: "Listening",
+      color: "bg-blue-50 text-blue-700 border-blue-100",
+      iconColor: "text-blue-600",
+    },
+    waiting: {
+      label: "AI interviewer is ready",
+      description: statusText,
+      badge: "Ready",
+      color: "bg-slate-50 text-slate-600 border-slate-200",
+      iconColor: "text-slate-500",
+    },
+  }[interviewerState];
+
   return (
-    <main className="flex h-[100dvh] flex-col overflow-hidden bg-slate-50">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600">
+    <main className="flex h-[100dvh] flex-col overflow-hidden bg-[#F5F7FC]">
+      {/* --------------------------------------------------
+          HEADER
+      -------------------------------------------------- */}
+
+      <header className="z-20 flex h-[68px] shrink-0 items-center justify-between border-b border-slate-200/80 bg-white px-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 shadow-sm shadow-indigo-600/20">
             <Brain className="h-5 w-5 text-white" />
           </div>
 
-          <div>
-            <h1 className="text-sm font-bold text-slate-900">
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-bold text-slate-900">
               TutorSathi AI Interview
             </h1>
 
-            <p className="text-xs text-slate-500">
-              Live voice interview
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Live teaching assessment
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           {recording && (
-            <div className="flex items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600">
+            <div className="flex items-center gap-2 rounded-full border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600">
               <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-              REC {formatTime(recSeconds)}
+              <span className="hidden sm:inline">REC</span>
+              {formatTime(recSeconds)}
             </div>
           )}
 
-          <div className="hidden items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 sm:flex">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+          <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 sm:flex">
+            <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" />
             Secure session
+          </div>
+
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+            <UserRound className="h-4 w-4" />
           </div>
         </div>
       </header>
 
-      <div className="mx-auto grid min-h-0 w-full max-w-7xl flex-1 gap-4 overflow-hidden p-3 sm:p-5 lg:grid-cols-[1.35fr_0.85fr]">
-        <section className="flex min-h-0 flex-col gap-4">
-          <div className="relative min-h-[240px] flex-1 overflow-hidden rounded-2xl bg-slate-950 shadow-sm">
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              className="absolute inset-0 h-full w-full scale-x-[-1] object-cover"
-            />
+      {/* --------------------------------------------------
+          INTERVIEW WORKSPACE
+      -------------------------------------------------- */}
 
-            {!cameraOn && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white">
-                <Loader2 className="h-8 w-8 animate-spin" />
-                <p className="text-sm text-white/70">
-                  Connecting camera...
+      <div className="mx-auto grid min-h-0 w-full max-w-[1600px] flex-1 grid-cols-1 gap-3 overflow-hidden p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_410px]">
+        {/* --------------------------------------------------
+            MAIN AI INTERVIEWER STAGE
+        -------------------------------------------------- */}
+
+        <section className="flex min-h-0 min-w-0 flex-col gap-3">
+          {/* AI STAGE */}
+
+          <div className="relative flex min-h-[340px] flex-1 flex-col items-center justify-center overflow-hidden rounded-3xl border border-indigo-100 bg-white px-4 py-7 shadow-sm sm:min-h-[420px] sm:px-8">
+            {/* Background decoration */}
+
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              <div className="absolute -left-28 -top-32 h-80 w-80 rounded-full bg-indigo-100/60 blur-3xl" />
+
+              <div className="absolute -bottom-40 -right-20 h-96 w-96 rounded-full bg-blue-100/60 blur-3xl" />
+
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.035)_1px,transparent_1px)] [background-size:24px_24px]" />
+            </div>
+
+            {/* Stage header */}
+
+            <div className="absolute left-5 right-5 top-5 z-10 flex items-center justify-between sm:left-7 sm:right-7">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  Your interviewer
+                </p>
+
+                <p className="mt-1 text-sm font-bold text-slate-800">
+                  TutorSathi AI
                 </p>
               </div>
-            )}
 
-            <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-black/50 px-3 py-2 text-xs font-medium text-white backdrop-blur">
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  recording
-                    ? "animate-pulse bg-red-500"
-                    : "bg-slate-400"
-                }`}
-              />
-              {recording ? "Recording" : "Camera active"}
-            </div>
-
-            <div className="absolute right-4 top-4 rounded-full bg-black/50 px-3 py-2 text-xs font-medium text-white backdrop-blur">
-              {speaking
-                ? "AI speaking"
-                : loading
-                  ? "AI thinking"
-                  : listening
-                    ? "Listening"
-                    : "AI interviewer"}
-            </div>
-
-            <div className="absolute bottom-4 left-4 rounded-lg bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur">
-              You
-            </div>
-
-            {(speaking || listening || loading) && (
-              <div className="absolute bottom-4 right-4 flex items-center gap-2 rounded-full bg-black/50 px-3 py-2 text-xs text-white backdrop-blur">
-                {speaking ? (
-                  <AudioLines className="h-4 w-4 animate-pulse text-indigo-300" />
-                ) : loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-indigo-300" />
+              <div
+                className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold ${interviewerStatus.color}`}
+              >
+                {loading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : speaking ? (
+                  <AudioLines className="h-3.5 w-3.5" />
+                ) : listening ? (
+                  <Mic className="h-3.5 w-3.5" />
                 ) : (
-                  <Mic className="h-4 w-4 text-emerald-400" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
                 )}
 
-                {speaking
-                  ? "Speaking"
-                  : loading
-                    ? "Processing"
-                    : "Listening to you"}
+                {interviewerStatus.badge}
               </div>
-            )}
-          </div>
+            </div>
 
-          <div className="shrink-0 rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+            {/* AI AVATAR */}
+
+            <div className="relative z-10 flex flex-col items-center">
+              <div
+                className={`relative flex h-44 w-44 items-center justify-center sm:h-56 sm:w-56 ${
+                  speaking ? "scale-[1.02]" : "scale-100"
+                } transition-transform duration-500`}
+              >
+                {/* Outer animated ring */}
+
                 <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                  className={`absolute inset-0 rounded-full border transition-all duration-500 ${
                     speaking
-                      ? "bg-indigo-100 text-indigo-600"
-                      : loading
-                        ? "bg-amber-50 text-amber-600"
-                        : listening
-                          ? "bg-emerald-50 text-emerald-600"
-                          : "bg-slate-100 text-slate-500"
+                      ? "animate-pulse border-indigo-300"
+                      : listening
+                        ? "border-blue-200"
+                        : loading
+                          ? "animate-pulse border-amber-200"
+                          : "border-indigo-100"
+                  }`}
+                />
+
+                <div
+                  className={`absolute inset-3 rounded-full border transition-all duration-500 ${
+                    speaking
+                      ? "border-indigo-300/80"
+                      : listening
+                        ? "border-blue-200/80"
+                        : "border-slate-200"
+                  }`}
+                />
+
+                {/* Glow */}
+
+                <div
+                  className={`absolute inset-7 rounded-full blur-2xl transition-all duration-500 ${
+                    speaking
+                      ? "bg-indigo-300/50"
+                      : listening
+                        ? "bg-blue-300/40"
+                        : loading
+                          ? "bg-amber-200/40"
+                          : "bg-indigo-200/40"
+                  }`}
+                />
+
+                {/* Avatar circle */}
+
+                <div
+                  className={`relative z-10 flex h-28 w-28 items-center justify-center rounded-full shadow-xl transition-all duration-500 sm:h-36 sm:w-36 ${
+                    speaking
+                      ? "bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-700 shadow-indigo-500/30"
+                      : listening
+                        ? "bg-gradient-to-br from-blue-500 via-indigo-600 to-indigo-700 shadow-blue-500/30"
+                        : loading
+                          ? "bg-gradient-to-br from-amber-400 via-orange-500 to-indigo-600 shadow-amber-500/20"
+                          : "bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-700 shadow-indigo-500/20"
                   }`}
                 >
                   {speaking ? (
-                    <Volume2 className="h-5 w-5" />
-                  ) : loading ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <AudioLines className="h-12 w-12 text-white sm:h-16 sm:w-16" />
                   ) : listening ? (
-                    <Mic className="h-5 w-5" />
+                    <Mic className="h-12 w-12 text-white sm:h-16 sm:w-16" />
+                  ) : loading ? (
+                    <Loader2 className="h-12 w-12 animate-spin text-white sm:h-16 sm:w-16" />
                   ) : (
-                    <Brain className="h-5 w-5" />
+                    <Brain className="h-12 w-12 text-white sm:h-16 sm:w-16" />
                   )}
                 </div>
 
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {speaking
-                      ? "AI interviewer is speaking"
-                      : loading
-                        ? "Analyzing your response"
-                        : listening
-                          ? "Listening to your answer"
-                          : "AI interviewer is ready"}
-                  </p>
+                {/* Sound wave rings */}
 
-                  <p className="mt-1 text-xs text-slate-500">
-                    {speaking
-                      ? "Please listen to the question."
-                      : loading
-                        ? "Your response is being processed."
-                        : listening
-                          ? "Speak clearly and naturally."
-                          : statusText}
-                  </p>
-                </div>
+                {(speaking || listening) && (
+                  <>
+                    <div className="absolute inset-0 animate-ping rounded-full border border-indigo-300/40 [animation-duration:2.5s]" />
+
+                    <div className="absolute -inset-3 animate-pulse rounded-full border border-indigo-200/50" />
+                  </>
+                )}
               </div>
 
-              <div className="hidden items-center gap-1.5 text-xs text-slate-400 sm:flex">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                Live session
+              {/* AI name */}
+
+              <div className="mt-5 text-center">
+                <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+                  AI Interviewer
+                </h2>
+
+                <p className="mt-1 text-xs font-medium text-slate-400">
+                  Your teaching assessment assistant
+                </p>
+              </div>
+
+              {/* Voice visualizer */}
+
+              <div className="mt-5 flex h-8 items-center justify-center gap-1.5">
+                {Array.from({ length: 19 }).map((_, index) => (
+                  <span
+                    key={index}
+                    className={`w-1 rounded-full transition-all duration-200 ${
+                      speaking
+                        ? "animate-pulse bg-indigo-500"
+                        : listening
+                          ? "animate-pulse bg-blue-500"
+                          : loading
+                            ? "animate-pulse bg-amber-400"
+                            : "bg-slate-200"
+                    }`}
+                    style={{
+                      height:
+                        speaking || listening
+                          ? `${10 + ((index * 7) % 17)}px`
+                          : loading
+                            ? `${8 + ((index * 3) % 10)}px`
+                            : "5px",
+                      animationDelay: `${index * 65}ms`,
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Current state */}
+
+              <div className="mt-3 max-w-md text-center">
+                <p className="text-sm font-semibold text-slate-800">
+                  {interviewerStatus.label}
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {interviewerStatus.description}
+                </p>
               </div>
             </div>
 
-            {transcript && (
-              <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-600">
-                  Your live response
-                </p>
+            {/* USER CAMERA FLOATING PREVIEW */}
 
-                <p className="text-sm leading-6 text-slate-700">
-                  {transcript}
-                </p>
+            <div className="absolute bottom-5 right-5 z-20 w-32 overflow-hidden rounded-2xl border-2 border-white bg-slate-950 shadow-xl sm:bottom-7 sm:right-7 sm:w-44">
+              <div className="relative aspect-[4/3]">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="absolute inset-0 h-full w-full scale-x-[-1] object-cover"
+                />
+
+                {!cameraOn && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900 text-white">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-[10px] text-white/70">
+                      Camera
+                    </span>
+                  </div>
+                )}
+
+                <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 text-[10px] font-medium text-white backdrop-blur">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                  You
+                </div>
+
+                <div className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white">
+                  <Video className="h-3 w-3" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between bg-white px-2.5 py-2">
+                <span className="text-[10px] font-semibold text-slate-700">
+                  Camera preview
+                </span>
+
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    cameraOn ? "bg-blue-500" : "bg-slate-300"
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* Recording badge */}
+
+            {recording && (
+              <div className="absolute bottom-5 left-5 z-10 flex items-center gap-2 rounded-full border border-red-100 bg-white/90 px-3 py-2 text-xs font-semibold text-red-600 shadow-sm backdrop-blur sm:bottom-7 sm:left-7">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                REC {formatTime(recSeconds)}
               </div>
             )}
           </div>
+
+          {/* LIVE TRANSCRIPT */}
+
+          <div className="shrink-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                  listening
+                    ? "bg-blue-50 text-blue-600"
+                    : speaking
+                      ? "bg-indigo-50 text-indigo-600"
+                      : loading
+                        ? "bg-amber-50 text-amber-600"
+                        : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {listening ? (
+                  <Mic className="h-5 w-5" />
+                ) : speaking ? (
+                  <Volume2 className="h-5 w-5" />
+                ) : loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Waves className="h-5 w-5" />
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {listening
+                      ? "Your answer"
+                      : speaking
+                        ? "AI interviewer"
+                        : loading
+                          ? "Processing"
+                          : "Interview status"}
+                  </p>
+
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                    {listening
+                      ? "Live transcription"
+                      : speaking
+                        ? "Voice output"
+                        : loading
+                          ? "Generating"
+                          : "Live session"}
+                  </span>
+                </div>
+
+                <p className="mt-1 min-h-6 text-sm leading-6 text-slate-600">
+                  {transcript ||
+                    (listening
+                      ? "I'm listening. Start speaking when you're ready..."
+                      : speaking
+                        ? "Please listen to the question."
+                        : loading
+                          ? "Gemini is preparing your next question..."
+                          : "Your interview is ready.")}
+                </p>
+              </div>
+            </div>
+          </div>
         </section>
 
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        {/* --------------------------------------------------
+            CONVERSATION PANEL
+        -------------------------------------------------- */}
+
+        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {/* Conversation header */}
+
           <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-4">
             <div>
               <h2 className="text-sm font-bold text-slate-900">
@@ -2175,7 +2399,7 @@ if (!response.ok || data.success === false) {
               </h2>
 
               <p className="mt-1 text-xs text-slate-500">
-                Your answers and AI questions
+                Questions and your responses
               </p>
             </div>
 
@@ -2184,18 +2408,24 @@ if (!response.ok || data.success === false) {
             </div>
           </div>
 
+          {/* Messages */}
+
           <div className="flex-1 space-y-5 overflow-y-auto p-4">
             {messages.length === 0 && (
-              <div className="flex h-full flex-col items-center justify-center text-center">
-                <Brain className="h-10 w-10 text-indigo-300" />
+              <div className="flex min-h-full flex-col items-center justify-center px-4 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50">
+                  <Brain className="h-7 w-7 text-indigo-600" />
+                </div>
 
-                <p className="mt-3 text-sm font-semibold text-slate-700">
-                  Your interview is starting
+                <p className="mt-4 text-sm font-semibold text-slate-800">
+                  Preparing your interview
                 </p>
 
-                <p className="mt-1 text-xs text-slate-400">
-                  Your AI interviewer will speak shortly.
+                <p className="mt-2 max-w-[230px] text-xs leading-5 text-slate-500">
+                  Gemini is preparing your first personalized teaching interview question.
                 </p>
+
+                <Loader2 className="mt-5 h-5 w-5 animate-spin text-indigo-500" />
               </div>
             )}
 
@@ -2239,7 +2469,7 @@ if (!response.ok || data.success === false) {
                   </div>
 
                   {!isAI && (
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-600">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
                       <Mic className="h-4 w-4" />
                     </div>
                   )}
@@ -2247,13 +2477,15 @@ if (!response.ok || data.success === false) {
               );
             })}
 
+            {/* Gemini thinking indicator */}
+
             {loading && (
               <div className="flex items-start gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white">
                   <Brain className="h-4 w-4" />
                 </div>
 
-                <div className="rounded-2xl rounded-tl-sm bg-slate-100 px-4 py-3">
+                <div className="max-w-[88%] rounded-2xl rounded-tl-sm bg-slate-100 px-4 py-3">
                   <div className="flex items-center gap-2">
                     <div className="flex gap-1">
                       <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-indigo-500 [animation-delay:-0.3s]" />
@@ -2272,29 +2504,37 @@ if (!response.ok || data.success === false) {
             <div ref={chatEndRef} />
           </div>
 
+          {/* Conversation footer */}
+
           <div className="shrink-0 border-t border-slate-100 p-4">
             <div
               className={`flex items-center gap-3 rounded-xl border p-3 ${
                 listening
-                  ? "border-emerald-200 bg-emerald-50"
+                  ? "border-blue-200 bg-blue-50"
                   : speaking
                     ? "border-indigo-100 bg-indigo-50"
-                    : "border-slate-200 bg-slate-50"
+                    : loading
+                      ? "border-amber-100 bg-amber-50"
+                      : "border-slate-200 bg-slate-50"
               }`}
             >
               <div
                 className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
                   listening
-                    ? "bg-emerald-100 text-emerald-600"
+                    ? "bg-blue-100 text-blue-600"
                     : speaking
                       ? "bg-indigo-100 text-indigo-600"
-                      : "bg-slate-200 text-slate-500"
+                      : loading
+                        ? "bg-amber-100 text-amber-600"
+                        : "bg-slate-200 text-slate-500"
                 }`}
               >
                 {listening ? (
                   <Mic className="h-5 w-5" />
                 ) : speaking ? (
                   <Volume2 className="h-5 w-5" />
+                ) : loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
                   <MicOff className="h-5 w-5" />
                 )}
@@ -2307,11 +2547,11 @@ if (!response.ok || data.success === false) {
                     : speaking
                       ? "AI is asking a question"
                       : loading
-                        ? "Processing your answer"
+                        ? "Gemini is processing"
                         : "Waiting for your turn"}
                 </p>
 
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 text-[11px] leading-5 text-slate-500">
                   {listening
                     ? "Your answer will be submitted automatically."
                     : speaking
@@ -2323,21 +2563,25 @@ if (!response.ok || data.success === false) {
               </div>
 
               {listening && (
-                <AudioLines className="h-5 w-5 shrink-0 animate-pulse text-emerald-600" />
+                <AudioLines className="h-5 w-5 shrink-0 animate-pulse text-blue-600" />
               )}
             </div>
 
-            <p className="mt-3 text-center text-[11px] leading-5 text-slate-400">
-              Voice-only interview · Your answers are automatically
-              detected and submitted.
-            </p>
+            <div className="mt-3 flex items-center justify-center gap-2 text-[10px] text-slate-400">
+              <ShieldCheck className="h-3.5 w-3.5 text-indigo-500" />
+              Voice-only interview · Automatic answer detection
+            </div>
           </div>
         </section>
       </div>
 
-      <footer className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <ShieldCheck className="h-4 w-4 text-emerald-600" />
+      {/* --------------------------------------------------
+          BOTTOM CONTROL BAR
+      -------------------------------------------------- */}
+
+      <footer className="z-20 flex shrink-0 items-center justify-between border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-slate-500">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-indigo-600" />
 
           <span className="hidden sm:inline">
             Your interview is being recorded securely.
@@ -2354,7 +2598,7 @@ if (!response.ok || data.success === false) {
             finishingRef.current ||
             !interviewId
           }
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -2366,10 +2610,14 @@ if (!response.ok || data.success === false) {
         </button>
       </footer>
 
+      {/* --------------------------------------------------
+          ERROR NOTIFICATION
+      -------------------------------------------------- */}
+
       {error && step === "live" && (
         <div
           role="alert"
-          className="absolute bottom-20 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-start gap-2 rounded-xl border border-red-200 bg-white p-3 text-sm text-red-700 shadow-lg"
+          className="absolute bottom-20 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-start gap-2 rounded-xl border border-red-200 bg-white p-3 text-sm text-red-700 shadow-xl"
         >
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 
@@ -2379,7 +2627,7 @@ if (!response.ok || data.success === false) {
             type="button"
             onClick={() => setError("")}
             aria-label="Dismiss error"
-            className="text-red-400 hover:text-red-700"
+            className="text-red-400 transition hover:text-red-700"
           >
             <XCircle className="h-4 w-4" />
           </button>
