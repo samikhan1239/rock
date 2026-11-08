@@ -1,14 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -18,10 +13,17 @@ import {
   RefreshCw,
   Plus,
   Trash2,
-  AlertCircle,
-  CheckCircle2,
   IndianRupee,
   Settings2,
+  GraduationCap,
+  Users,
+  Percent,
+  Wallet,
+  Check,
+  Star,
+  Info,
+  CircleDollarSign,
+  AlertCircle,
 } from "lucide-react";
 
 interface CreditPack {
@@ -48,6 +50,14 @@ interface ApiCreditPack {
   amount: number;
   label: string;
   popular?: boolean;
+}
+
+interface ApiResponse {
+  error?: string;
+  message?: string;
+  settings?: Partial<PricingSettings> & {
+    creditPacks?: ApiCreditPack[];
+  };
 }
 
 const makeId = () =>
@@ -91,6 +101,136 @@ function toNum(value: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+/**
+ * Safely parses API responses.
+ * Handles invalid JSON and non-JSON server errors.
+ */
+async function parseApiResponse(
+  response: Response
+): Promise<ApiResponse> {
+  const responseText = await response.text();
+
+  if (!responseText.trim()) {
+    if (!response.ok) {
+      throw new Error(
+        `Request failed with status ${response.status}.`
+      );
+    }
+
+    return {};
+  }
+
+  try {
+    return JSON.parse(responseText) as ApiResponse;
+  } catch {
+    if (!response.ok) {
+      throw new Error(
+        `Server error (${response.status}). Please try again later.`
+      );
+    }
+
+    throw new Error(
+      "The server returned an invalid response. Please try again."
+    );
+  }
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
+function SectionHeading({
+  number,
+  title,
+  description,
+}: {
+  number: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="mb-5 flex items-start gap-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-xs font-bold text-indigo-600">
+        {number}
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-slate-900">
+          {title}
+        </h3>
+
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          {description}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PricingField({
+  label,
+  value,
+  onChange,
+  description,
+  disabled,
+  min = 0,
+  suffix,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  description?: string;
+  disabled?: boolean;
+  min?: number;
+  suffix?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs font-semibold text-slate-700">
+        {label}
+      </Label>
+
+      <div className="relative">
+        <Input
+          type="number"
+          min={min}
+          step="any"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          className={`h-10 rounded-lg border-slate-200 bg-white text-sm font-medium text-slate-800 shadow-none focus-visible:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-100 ${
+            suffix ? "pr-12" : ""
+          }`}
+        />
+
+        {suffix && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
+            {suffix}
+          </span>
+        )}
+      </div>
+
+      {description && (
+        <p className="text-[11px] leading-5 text-slate-400">
+          {description}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function SuperAdminPricingPage() {
   const [settings, setSettings] = useState<PricingSettings>(
     createDefaultSettings
@@ -99,97 +239,117 @@ export default function SuperAdminPricingPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState<"success" | "error">(
-    "success"
-  );
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Fetch pricing settings.
-  const fetchSettings = useCallback(async () => {
-    setLoading(true);
-    setMessage("");
+  // =========================================
+  // FETCH SETTINGS
+  // =========================================
 
-    try {
-      const res = await fetch("/api/super-admin/pricing", {
-        method: "GET",
-        cache: "no-store",
-      });
+  const fetchSettings = useCallback(
+    async (showSuccess = false) => {
+      if (loading && hasLoaded) return;
 
-      const data = await res.json();
+      setLoading(true);
+      setLoadError(null);
 
-      if (!res.ok) {
-        throw new Error(
-          data.error || "Failed to load pricing settings."
-        );
-      }
+      try {
+        const res = await fetch("/api/super-admin/pricing", {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+          },
+        });
 
-      if (data.settings) {
+        const data = await parseApiResponse(res);
+
+        if (!res.ok) {
+          throw new Error(
+            data.error ||
+              data.message ||
+              "Unable to load pricing settings."
+          );
+        }
+
+        if (!data.settings) {
+          throw new Error(
+            "Pricing settings were not found in the server response."
+          );
+        }
+
         const s = data.settings;
+
+        const creditPacks =
+          Array.isArray(s.creditPacks) &&
+          s.creditPacks.length > 0
+            ? s.creditPacks.map((pack) => ({
+                id: makeId(),
+                credits: String(pack.credits ?? 0),
+                amount: String(pack.amount ?? 0),
+                label: pack.label || "",
+                popular: Boolean(pack.popular),
+              }))
+            : createDefaultSettings().creditPacks;
 
         setSettings({
           teacherRegistrationFee: String(
             s.teacherRegistrationFee ?? 0
           ),
-
           clientRegistrationFee: String(
             s.clientRegistrationFee ?? 0
           ),
-
           connectionCreditPrice: String(
             s.connectionCreditPrice ?? 1
           ),
-
           teacherSubscriptionMonthly: String(
             s.teacherSubscriptionMonthly ?? 299
           ),
-
           clientSubscriptionMonthly: String(
             s.clientSubscriptionMonthly ?? 199
           ),
-
           freeCreditsOnSignup: String(
             s.freeCreditsOnSignup ?? 5
           ),
-
           platformCommissionPercent: String(
             s.platformCommissionPercent ?? 10
           ),
-
-          creditPacks:
-            Array.isArray(s.creditPacks) &&
-            s.creditPacks.length > 0
-              ? (s.creditPacks as ApiCreditPack[]).map((p) => ({
-                  id: makeId(),
-                  credits: String(p.credits ?? 0),
-                  amount: String(p.amount ?? 0),
-                  label: p.label || "",
-                  popular: Boolean(p.popular),
-                }))
-              : createDefaultSettings().creditPacks,
+          creditPacks,
         });
+
+        setLoadError(null);
+
+        if (showSuccess) {
+          toast.success("Pricing settings refreshed successfully.");
+        }
+      } catch (error) {
+        console.error("Pricing settings fetch error:", error);
+
+        const message = getErrorMessage(
+          error,
+          "Failed to load pricing settings."
+        );
+
+        setLoadError(message);
+        toast.error(message, {
+          description:
+            "Please check your connection and try again.",
+        });
+      } finally {
+        setLoading(false);
+        setHasLoaded(true);
       }
-    } catch (error) {
-      console.error("Pricing settings fetch error:", error);
+    },
+    [hasLoaded, loading]
+  );
 
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to load pricing settings."
-      );
-
-      setMessageType("error");
-    } finally {
-      setLoading(false);
-      setHasLoaded(true);
-    }
-  }, []);
-
-  // IMPORTANT: Initial API request happens after mounting,
-  // not during component rendering.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchSettings();
   }, [fetchSettings]);
+
+  // =========================================
+  // FIELD HANDLERS
+  // =========================================
 
   const handleChange = (
     field: keyof Omit<PricingSettings, "creditPacks">,
@@ -208,31 +368,24 @@ export default function SuperAdminPricingPage() {
   ) => {
     setSettings((prev) => ({
       ...prev,
-      creditPacks: prev.creditPacks.map((pack) => {
-        if (pack.id !== id) return pack;
-
-        if (field === "popular") {
-          return { ...pack, popular: Boolean(value) };
-        }
-
-        if (field === "label") {
-          return { ...pack, label: String(value) };
-        }
-
-        if (field === "credits") {
-          return { ...pack, credits: String(value) };
-        }
-
-        if (field === "amount") {
-          return { ...pack, amount: String(value) };
-        }
-
-        return pack;
-      }),
+      creditPacks: prev.creditPacks.map((pack) =>
+        pack.id === id
+          ? {
+              ...pack,
+              [field]: value,
+            }
+          : pack
+      ),
     }));
   };
 
+  // =========================================
+  // ADD CREDIT PACKAGE
+  // =========================================
+
   const addPack = () => {
+    if (saving) return;
+
     setSettings((prev) => ({
       ...prev,
       creditPacks: [
@@ -247,18 +400,27 @@ export default function SuperAdminPricingPage() {
       ],
     }));
 
-    setMessage("");
+    toast.success("Credit package added.", {
+      description: "Configure its name, credits and price before publishing.",
+    });
   };
 
+  // =========================================
+  // REMOVE CREDIT PACKAGE
+  // =========================================
+
   const removePack = (id: string) => {
+    if (saving) return;
+
     if (settings.creditPacks.length <= 1) {
-      setMessage("At least one credit pack is required.");
-      setMessageType("error");
+      toast.error("Cannot remove the last package.", {
+        description: "At least one credit package is required.",
+      });
       return;
     }
 
     const confirmed = window.confirm(
-      "Are you sure you want to remove this credit pack?"
+      "Are you sure you want to remove this credit package?"
     );
 
     if (!confirmed) return;
@@ -270,53 +432,96 @@ export default function SuperAdminPricingPage() {
       ),
     }));
 
-    setMessage("");
+    toast.success("Credit package removed.");
   };
 
-  // Save pricing settings.
-  const handleSave = async () => {
-    setMessage("");
+  // =========================================
+  // VALIDATION
+  // =========================================
 
+  const validateSettings = () => {
     if (!settings.creditPacks.length) {
-      setMessage("Add at least one credit pack.");
-      setMessageType("error");
-      return;
+      toast.error("No credit packages configured.", {
+        description: "Add at least one credit package.",
+      });
+      return false;
     }
 
-    for (const pack of settings.creditPacks) {
+    for (const [index, pack] of settings.creditPacks.entries()) {
+      const packName = pack.label.trim() || `Package ${index + 1}`;
+
       if (!pack.label.trim()) {
-        setMessage("Every credit pack must have a label.");
-        setMessageType("error");
-        return;
+        toast.error("Package name is required.", {
+          description: `Please enter a name for package ${index + 1}.`,
+        });
+        return false;
       }
 
-      if (toNum(pack.credits) < 1) {
-        setMessage("Credit pack credits must be greater than 0.");
-        setMessageType("error");
-        return;
+      if (
+        pack.credits.trim() === "" ||
+        !Number.isFinite(Number(pack.credits)) ||
+        !Number.isInteger(Number(pack.credits)) ||
+        toNum(pack.credits) < 1
+      ) {
+        toast.error("Invalid credit quantity.", {
+          description: `${packName} must have a positive whole-number credit quantity.`,
+        });
+        return false;
       }
 
-      if (toNum(pack.amount) < 1) {
-        setMessage("Credit pack price must be greater than 0.");
-        setMessageType("error");
-        return;
+      if (
+        pack.amount.trim() === "" ||
+        !Number.isFinite(Number(pack.amount)) ||
+        toNum(pack.amount) < 1
+      ) {
+        toast.error("Invalid package price.", {
+          description: `${packName} must have a price greater than ₹0.`,
+        });
+        return false;
       }
     }
 
     const numericFields = [
-      settings.teacherRegistrationFee,
-      settings.clientRegistrationFee,
-      settings.connectionCreditPrice,
-      settings.teacherSubscriptionMonthly,
-      settings.clientSubscriptionMonthly,
-      settings.freeCreditsOnSignup,
-      settings.platformCommissionPercent,
+      {
+        label: "Teacher registration fee",
+        value: settings.teacherRegistrationFee,
+      },
+      {
+        label: "Client registration fee",
+        value: settings.clientRegistrationFee,
+      },
+      {
+        label: "Connection credit price",
+        value: settings.connectionCreditPrice,
+      },
+      {
+        label: "Teacher subscription",
+        value: settings.teacherSubscriptionMonthly,
+      },
+      {
+        label: "Client subscription",
+        value: settings.clientSubscriptionMonthly,
+      },
+      {
+        label: "Free signup credits",
+        value: settings.freeCreditsOnSignup,
+      },
+      {
+        label: "Platform commission",
+        value: settings.platformCommissionPercent,
+      },
     ];
 
-    if (numericFields.some((value) => value.trim() === "" || !Number.isFinite(Number(value)))) {
-      setMessage("Please enter valid numbers in all pricing fields.");
-      setMessageType("error");
-      return;
+    for (const field of numericFields) {
+      if (
+        field.value.trim() === "" ||
+        !Number.isFinite(Number(field.value))
+      ) {
+        toast.error("Invalid pricing value.", {
+          description: `Please enter a valid number for ${field.label.toLowerCase()}.`,
+        });
+        return false;
+      }
     }
 
     if (
@@ -329,15 +534,34 @@ export default function SuperAdminPricingPage() {
       toNum(settings.platformCommissionPercent) < 0 ||
       toNum(settings.platformCommissionPercent) > 100
     ) {
-      setMessage(
-        "Check your pricing values. Commission must be between 0 and 100."
-      );
-      setMessageType("error");
+      toast.error("Pricing values are outside the allowed range.", {
+        description:
+          "Fees and subscriptions cannot be negative. Connection credit price must be at least 1, and commission must be between 0 and 100.",
+      });
+      return false;
+    }
+
+    return true;
+  };
+
+  // =========================================
+  // SAVE SETTINGS
+  // =========================================
+
+  const handleSave = async () => {
+    if (saving || loading) return;
+
+    if (!hasLoaded || loadError) {
+      toast.error("Pricing settings are not ready.", {
+        description: "Refresh the settings before publishing changes.",
+      });
       return;
     }
 
+    if (!validateSettings()) return;
+
     const confirmed = window.confirm(
-      "Are you sure you want to update platform pricing?\n\nThis will change credit packs, fees and subscription prices for all users."
+      "Publish these pricing changes?\n\nUpdated prices and credit packages may affect all platform users."
     );
 
     if (!confirmed) return;
@@ -346,31 +570,24 @@ export default function SuperAdminPricingPage() {
       teacherRegistrationFee: toNum(
         settings.teacherRegistrationFee
       ),
-
       clientRegistrationFee: toNum(
         settings.clientRegistrationFee
       ),
-
       connectionCreditPrice: toNum(
         settings.connectionCreditPrice
       ),
-
       teacherSubscriptionMonthly: toNum(
         settings.teacherSubscriptionMonthly
       ),
-
       clientSubscriptionMonthly: toNum(
         settings.clientSubscriptionMonthly
       ),
-
       freeCreditsOnSignup: toNum(
         settings.freeCreditsOnSignup
       ),
-
       platformCommissionPercent: toNum(
         settings.platformCommissionPercent
       ),
-
       creditPacks: settings.creditPacks.map((pack) => ({
         label: pack.label.trim(),
         credits: toNum(pack.credits),
@@ -381,475 +598,681 @@ export default function SuperAdminPricingPage() {
 
     setSaving(true);
 
+    const toastId = toast.loading("Publishing pricing settings...", {
+      description: "Please wait while your changes are saved.",
+    });
+
     try {
       const res = await fetch("/api/super-admin/pricing", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
         },
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const data = await parseApiResponse(res);
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to save pricing settings.");
+        throw new Error(
+          data.error ||
+            data.message ||
+            "Failed to save pricing settings."
+        );
       }
 
-      setMessage("Pricing and credit packs saved successfully.");
-      setMessageType("success");
+      toast.success("Pricing published successfully.", {
+        id: toastId,
+        description:
+          data.message ||
+          "Your platform pricing configuration has been updated.",
+      });
     } catch (error) {
       console.error("Pricing save error:", error);
 
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong while saving pricing."
+      const message = getErrorMessage(
+        error,
+        "Something went wrong while saving pricing."
       );
 
-      setMessageType("error");
+      toast.error("Unable to publish pricing.", {
+        id: toastId,
+        description: message,
+        duration: 5000,
+      });
     } finally {
       setSaving(false);
     }
   };
 
-  // Initial loading state.
+  // =========================================
+  // DERIVED VALUES
+  // =========================================
+
+  const totalPacks = settings.creditPacks.length;
+
+  const popularPack = settings.creditPacks.find(
+    (pack) => pack.popular
+  );
+
+  const totalPackageCredits = settings.creditPacks.reduce(
+    (sum, pack) => sum + toNum(pack.credits),
+    0
+  );
+
+  // =========================================
+  // INITIAL LOADING
+  // =========================================
+
   if (loading && !hasLoaded) {
     return (
-      <div className="flex min-h-[350px] flex-col items-center justify-center gap-3">
+      <div className="flex min-h-[450px] flex-col items-center justify-center gap-4">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50">
           <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
         </div>
 
-        <p className="text-sm font-semibold text-slate-800">
-          Loading pricing settings...
-        </p>
+        <div className="text-center">
+          <p className="text-sm font-semibold text-slate-800">
+            Loading pricing configuration
+          </p>
 
-        <p className="text-xs text-slate-500">
-          Fetching your latest platform configuration
-        </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Retrieving platform settings...
+          </p>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-5xl space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="mb-1 flex items-center gap-2">
-            <Settings2 className="h-5 w-5 text-indigo-600" />
+  // =========================================
+  // INITIAL LOAD ERROR
+  // =========================================
 
-            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
-              Platform Configuration
-            </span>
+  if (loadError && !hasLoaded) {
+    return (
+      <div className="flex min-h-[450px] items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-7 text-center shadow-sm">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-red-50">
+            <AlertCircle className="h-6 w-6 text-red-600" />
           </div>
 
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-            Dynamic Pricing
+          <h2 className="mt-4 text-base font-semibold text-slate-900">
+            Unable to load pricing settings
           </h2>
 
-          <p className="mt-1 text-sm text-slate-500">
-            Manage registration fees, subscriptions and Razorpay credit packs.
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            {loadError}
+          </p>
+
+          <Button
+            type="button"
+            onClick={() => void fetchSettings()}
+            disabled={loading}
+            className="mt-5 h-10 gap-2 bg-indigo-600 px-5 text-xs font-semibold text-white hover:bg-indigo-700"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================
+  // MAIN PAGE
+  // =========================================
+
+  return (
+    <div className="mx-auto w-full max-w-6xl space-y-7 pb-10">
+      {/* PAGE HEADER */}
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
+            <Settings2 className="h-4 w-4" />
+            Super Admin / Configuration
+          </div>
+
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Pricing & Monetization
+          </h1>
+
+          <p className="mt-1.5 text-sm text-slate-500">
+            Control platform fees, subscriptions, credits and revenue
+            settings.
           </p>
         </div>
 
         <Button
           type="button"
           variant="outline"
-          size="sm"
-          onClick={() => void fetchSettings()}
+          onClick={() => void fetchSettings(true)}
           disabled={loading || saving}
-          className="border-slate-200 bg-white"
+          className="h-9 gap-2 border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
         >
           <RefreshCw
-            className={`mr-2 h-4 w-4 ${
+            className={`h-3.5 w-3.5 ${
               loading ? "animate-spin" : ""
             }`}
           />
-          Refresh
+          Refresh settings
         </Button>
       </div>
 
-      {/* Message */}
-      {message && (
-        <div
-          role="status"
-          className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${
-            messageType === "success"
-              ? "border-blue-200 bg-blue-50 text-blue-800"
-              : "border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {messageType === "success" ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          ) : (
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          )}
+      {/* REFRESH ERROR */}
+      {loadError && hasLoaded && (
+        <div className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
 
-          <p>{message}</p>
-        </div>
-      )}
+            <div>
+              <p className="text-xs font-semibold text-red-800">
+                Could not refresh pricing settings
+              </p>
 
-      {/* Registration Fees */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="border-b border-slate-100 px-5 py-4">
-          <CardTitle className="text-base font-semibold text-slate-900">
-            Registration Fees
-          </CardTitle>
-
-          <p className="text-xs text-slate-500">
-            Configure the one-time registration charges for platform users.
-          </p>
-        </CardHeader>
-
-        <CardContent className="grid grid-cols-1 gap-5 p-5 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Teacher Registration Fee (₹)</Label>
-
-            <Input
-              type="number"
-              min={0}
-              value={settings.teacherRegistrationFee}
-              onChange={(e) =>
-                handleChange(
-                  "teacherRegistrationFee",
-                  e.target.value
-                )
-              }
-            />
-
-            <p className="text-xs text-slate-500">
-              Set 0 for free teacher registration.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Client Registration Fee (₹)</Label>
-
-            <Input
-              type="number"
-              min={0}
-              value={settings.clientRegistrationFee}
-              onChange={(e) =>
-                handleChange(
-                  "clientRegistrationFee",
-                  e.target.value
-                )
-              }
-            />
-
-            <p className="text-xs text-slate-500">
-              Set 0 for free client registration.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Credit Packs */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
-          <div>
-            <CardTitle className="text-base font-semibold text-slate-900">
-              Credit Packs
-            </CardTitle>
-
-            <p className="mt-1 text-xs text-slate-500">
-              Manage the credit packages available for Razorpay purchases.
-            </p>
+              <p className="mt-1 text-xs text-red-700">
+                {loadError} Your previously loaded settings are still displayed.
+              </p>
+            </div>
           </div>
 
           <Button
             type="button"
             variant="outline"
             size="sm"
+            onClick={() => void fetchSettings(true)}
+            disabled={loading || saving}
+            className="h-8 shrink-0 border-red-200 bg-white text-xs text-red-700 hover:bg-red-100"
+          >
+            <RefreshCw
+              className={`mr-2 h-3.5 w-3.5 ${
+                loading ? "animate-spin" : ""
+              }`}
+            />
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {/* SUMMARY OVERVIEW */}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">
+              Teacher registration
+            </span>
+            <GraduationCap className="h-4 w-4 text-indigo-500" />
+          </div>
+
+          <p className="mt-3 text-xl font-bold text-slate-900">
+            {formatCurrency(toNum(settings.teacherRegistrationFee))}
+          </p>
+
+          <p className="mt-1 text-[11px] text-slate-400">
+            One-time fee
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">
+              Client registration
+            </span>
+            <Users className="h-4 w-4 text-blue-500" />
+          </div>
+
+          <p className="mt-3 text-xl font-bold text-slate-900">
+            {formatCurrency(toNum(settings.clientRegistrationFee))}
+          </p>
+
+          <p className="mt-1 text-[11px] text-slate-400">
+            One-time fee
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">
+              Credit packages
+            </span>
+            <Wallet className="h-4 w-4 text-violet-500" />
+          </div>
+
+          <p className="mt-3 text-xl font-bold text-slate-900">
+            {totalPacks}
+          </p>
+
+          <p className="mt-1 text-[11px] text-slate-400">
+            Active configured packages
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">
+              Platform commission
+            </span>
+            <Percent className="h-4 w-4 text-indigo-600" />
+          </div>
+
+          <p className="mt-3 text-xl font-bold text-slate-900">
+            {settings.platformCommissionPercent}%
+          </p>
+
+          <p className="mt-1 text-[11px] text-slate-400">
+            Current commission rate
+          </p>
+        </div>
+      </div>
+
+      {/* REGISTRATION FEES */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <SectionHeading
+            number="01"
+            title="Registration fees"
+            description="Configure one-time registration charges for each account type."
+          />
+
+          <GraduationCap className="hidden h-5 w-5 text-slate-300 sm:block" />
+        </div>
+
+        <div className="grid gap-6 p-5 md:grid-cols-2">
+          <PricingField
+            label="Teacher registration fee"
+            value={settings.teacherRegistrationFee}
+            onChange={(value) =>
+              handleChange("teacherRegistrationFee", value)
+            }
+            description="One-time payment required for teacher registration. Set 0 for free registration."
+            disabled={saving}
+          />
+
+          <PricingField
+            label="Client registration fee"
+            value={settings.clientRegistrationFee}
+            onChange={(value) =>
+              handleChange("clientRegistrationFee", value)
+            }
+            description="One-time payment required for client registration. Set 0 for free registration."
+            disabled={saving}
+          />
+        </div>
+      </section>
+
+      {/* CREDIT PACKAGES */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <SectionHeading
+            number="02"
+            title="Credit packages"
+            description="Create and manage the credit packages users can purchase."
+          />
+
+          <Button
+            type="button"
             onClick={addPack}
             disabled={saving}
-            className="shrink-0"
+            size="sm"
+            className="h-9 gap-1.5 bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700"
           >
-            <Plus className="mr-1.5 h-4 w-4" />
-            Add Pack
+            <Plus className="h-4 w-4" />
+            Add package
           </Button>
-        </CardHeader>
+        </div>
 
-        <CardContent className="space-y-4 p-5">
-          {settings.creditPacks.map((pack, index) => (
-            <div
-              key={pack.id}
-              className="rounded-xl border border-slate-200 bg-white p-4"
-            >
-              <div className="mb-4 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-xs font-bold text-indigo-700">
-                    {index + 1}
-                  </span>
+        <div className="p-5">
+          <div className="mb-5 flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
 
-                  <p className="text-sm font-semibold text-slate-800">
-                    Credit Pack {index + 1}
+            <p className="text-xs leading-5 text-indigo-800">
+              Set the credit quantity and purchase price for each package.
+              The Popular badge highlights a package in the user-facing
+              purchase interface.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {settings.creditPacks.map((pack, index) => {
+              const credits = toNum(pack.credits);
+              const amount = toNum(pack.amount);
+
+              const perCredit =
+                credits > 0 ? amount / credits : 0;
+
+              return (
+                <div
+                  key={pack.id}
+                  className={`rounded-xl border p-4 transition-colors ${
+                    pack.popular
+                      ? "border-indigo-200 bg-indigo-50/30"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600">
+                        {String(index + 1).padStart(2, "0")}
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {pack.label || `Package ${index + 1}`}
+                        </p>
+
+                        <p className="text-[11px] text-slate-400">
+                          Credit package
+                        </p>
+                      </div>
+
+                      {pack.popular && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-bold text-indigo-700">
+                          <Star className="h-3 w-3 fill-current" />
+                          POPULAR
+                        </span>
+                      )}
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removePack(pack.id)}
+                      disabled={
+                        saving || settings.creditPacks.length <= 1
+                      }
+                      className="h-8 gap-1.5 px-2 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Remove</span>
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-slate-600">
+                        Package name
+                      </Label>
+
+                      <Input
+                        value={pack.label}
+                        onChange={(e) =>
+                          updatePack(pack.id, "label", e.target.value)
+                        }
+                        placeholder="Starter"
+                        disabled={saving}
+                        className="h-10 border-slate-200 bg-white text-sm shadow-none focus-visible:border-indigo-500 focus-visible:ring-indigo-100"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-slate-600">
+                        Number of credits
+                      </Label>
+
+                      <Input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={pack.credits}
+                        onChange={(e) =>
+                          updatePack(pack.id, "credits", e.target.value)
+                        }
+                        placeholder="15"
+                        disabled={saving}
+                        className="h-10 border-slate-200 bg-white text-sm shadow-none focus-visible:border-indigo-500 focus-visible:ring-indigo-100"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-slate-600">
+                        Package price
+                      </Label>
+
+                      <div className="relative">
+                        <IndianRupee className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+
+                        <Input
+                          type="number"
+                          min={1}
+                          step="any"
+                          value={pack.amount}
+                          onChange={(e) =>
+                            updatePack(pack.id, "amount", e.target.value)
+                          }
+                          placeholder="249"
+                          disabled={saving}
+                          className="h-10 border-slate-200 bg-white pl-8 text-sm shadow-none focus-visible:border-indigo-500 focus-visible:ring-indigo-100"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updatePack(
+                          pack.id,
+                          "popular",
+                          !pack.popular
+                        )
+                      }
+                      disabled={saving}
+                      aria-pressed={Boolean(pack.popular)}
+                      className={`inline-flex items-center gap-2 text-xs font-medium transition-colors ${
+                        pack.popular
+                          ? "text-indigo-700"
+                          : "text-slate-500 hover:text-indigo-600"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-4 w-4 items-center justify-center rounded border ${
+                          pack.popular
+                            ? "border-indigo-600 bg-indigo-600 text-white"
+                            : "border-slate-300 bg-white"
+                        }`}
+                      >
+                        {pack.popular && (
+                          <Check className="h-3 w-3" />
+                        )}
+                      </span>
+
+                      Mark as popular package
+                    </button>
+
+                    <div className="text-xs text-slate-500">
+                      Price per credit:{" "}
+                      <span className="font-bold text-slate-800">
+                        {formatCurrency(perCredit)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-4 py-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-700">
+                Package configuration
+              </p>
+
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                {totalPacks} packages configured
+                {popularPack
+                  ? ` · ${popularPack.label} marked as popular`
+                  : " · No popular package selected"}
+              </p>
+            </div>
+
+            <span className="text-xs font-semibold text-indigo-600">
+              {totalPackageCredits} total package credits
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* CREDIT & SUBSCRIPTION SETTINGS */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <SectionHeading
+            number="03"
+            title="Credits & subscriptions"
+            description="Manage connection request credit consumption and monthly membership prices."
+          />
+        </div>
+
+        <div className="grid gap-x-8 gap-y-6 p-5 md:grid-cols-2">
+          <PricingField
+            label="Credits per connection request"
+            value={settings.connectionCreditPrice}
+            onChange={(value) =>
+              handleChange("connectionCreditPrice", value)
+            }
+            description="Credits consumed when a user submits a connection request."
+            min={1}
+            disabled={saving}
+          />
+
+          <PricingField
+            label="Free credits on signup"
+            value={settings.freeCreditsOnSignup}
+            onChange={(value) =>
+              handleChange("freeCreditsOnSignup", value)
+            }
+            description="Initial free credits granted to newly registered users."
+            disabled={saving}
+          />
+
+          <PricingField
+            label="Teacher monthly subscription"
+            value={settings.teacherSubscriptionMonthly}
+            onChange={(value) =>
+              handleChange("teacherSubscriptionMonthly", value)
+            }
+            description="Monthly subscription price for teachers."
+            disabled={saving}
+          />
+
+          <PricingField
+            label="Client monthly subscription"
+            value={settings.clientSubscriptionMonthly}
+            onChange={(value) =>
+              handleChange("clientSubscriptionMonthly", value)
+            }
+            description="Monthly subscription price for clients."
+            disabled={saving}
+          />
+        </div>
+      </section>
+
+      {/* PLATFORM COMMISSION */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <SectionHeading
+            number="04"
+            title="Platform commission"
+            description="Configure the percentage retained by TutorSathi on applicable transactions."
+          />
+        </div>
+
+        <div className="p-5">
+          <div className="max-w-md">
+            <PricingField
+              label="Commission percentage"
+              value={settings.platformCommissionPercent}
+              onChange={(value) =>
+                handleChange("platformCommissionPercent", value)
+              }
+              suffix="%"
+              description="Enter a value between 0 and 100."
+              disabled={saving}
+            />
+
+            <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+              <div className="flex items-start gap-3">
+                <CircleDollarSign className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+
+                <div>
+                  <p className="text-xs font-semibold text-blue-900">
+                    Commission preview
                   </p>
 
-                  {pack.popular && (
-                    <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700">
-                      POPULAR
-                    </span>
-                  )}
+                  <p className="mt-1 text-xs leading-5 text-blue-800">
+                    For every ₹1,000 of applicable transaction value,
+                    TutorSathi retains{" "}
+                    <strong>
+                      {formatCurrency(
+                        1000 *
+                          (toNum(
+                            settings.platformCommissionPercent
+                          ) / 100)
+                      )}
+                    </strong>{" "}
+                    at the current commission rate.
+                  </p>
                 </div>
-
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 text-red-600 hover:bg-red-50 hover:text-red-700"
-                  onClick={() => removePack(pack.id)}
-                  disabled={saving || settings.creditPacks.length <= 1}
-                >
-                  <Trash2 className="mr-1.5 h-4 w-4" />
-                  Remove
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="space-y-1.5">
-                  <Label>Pack Name</Label>
-
-                  <Input
-                    value={pack.label}
-                    onChange={(e) =>
-                      updatePack(pack.id, "label", e.target.value)
-                    }
-                    placeholder="Starter"
-                    disabled={saving}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>Credits</Label>
-
-                  <Input
-                    type="number"
-                    min={1}
-                    value={pack.credits}
-                    onChange={(e) =>
-                      updatePack(pack.id, "credits", e.target.value)
-                    }
-                    placeholder="5"
-                    disabled={saving}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>Price (₹)</Label>
-
-                  <Input
-                    type="number"
-                    min={1}
-                    value={pack.amount}
-                    onChange={(e) =>
-                      updatePack(pack.id, "amount", e.target.value)
-                    }
-                    placeholder="99"
-                    disabled={saving}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>Popular Badge</Label>
-
-                  <select
-                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                    value={pack.popular ? "yes" : "no"}
-                    onChange={(e) =>
-                      updatePack(
-                        pack.id,
-                        "popular",
-                        e.target.value === "yes"
-                      )
-                    }
-                    disabled={saving}
-                  >
-                    <option value="no">No</option>
-                    <option value="yes">Yes</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                <span className="text-xs text-slate-500">
-                  Price per credit
-                </span>
-
-                <span className="text-sm font-semibold text-slate-700">
-                  ₹
-                  {toNum(pack.credits) > 0
-                    ? (
-                        toNum(pack.amount) /
-                        toNum(pack.credits)
-                      ).toFixed(2)
-                    : "0.00"}{" "}
-                  / credit
-                </span>
               </div>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+          </div>
+        </div>
+      </section>
 
-      {/* Credits & Subscriptions */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="border-b border-slate-100 px-5 py-4">
-          <CardTitle className="text-base font-semibold text-slate-900">
-            Credits & Subscriptions
-          </CardTitle>
+      {/* SAVE SETTINGS */}
+      <div className="sticky bottom-0 z-20 -mx-2 border-t border-slate-200 bg-white/95 px-4 py-4 backdrop-blur-md sm:mx-0 sm:rounded-xl sm:border">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-sm font-semibold text-slate-800">
+              Ready to publish your pricing?
+            </p>
 
-          <p className="text-xs text-slate-500">
-            Configure credit consumption and monthly subscription pricing.
-          </p>
-        </CardHeader>
-
-        <CardContent className="grid grid-cols-1 gap-5 p-5 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Credits Per Connection Request</Label>
-
-            <Input
-              type="number"
-              min={1}
-              value={settings.connectionCreditPrice}
-              onChange={(e) =>
-                handleChange(
-                  "connectionCreditPrice",
-                  e.target.value
-                )
-              }
-              disabled={saving}
-            />
-
-            <p className="text-xs text-slate-500">
-              Number of credits deducted for each request.
+            <p className="mt-1 text-xs text-slate-400">
+              Changes will apply after successfully saving the configuration.
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label>Free Credits on Signup</Label>
-
-            <Input
-              type="number"
-              min={0}
-              value={settings.freeCreditsOnSignup}
-              onChange={(e) =>
-                handleChange("freeCreditsOnSignup", e.target.value)
-              }
-              disabled={saving}
-            />
-
-            <p className="text-xs text-slate-500">
-              Free credits granted to newly registered users.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Teacher Subscription (Monthly ₹)</Label>
-
-            <Input
-              type="number"
-              min={0}
-              value={settings.teacherSubscriptionMonthly}
-              onChange={(e) =>
-                handleChange(
-                  "teacherSubscriptionMonthly",
-                  e.target.value
-                )
-              }
-              disabled={saving}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Client Subscription (Monthly ₹)</Label>
-
-            <Input
-              type="number"
-              min={0}
-              value={settings.clientSubscriptionMonthly}
-              onChange={(e) =>
-                handleChange(
-                  "clientSubscriptionMonthly",
-                  e.target.value
-                )
-              }
-              disabled={saving}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Platform Commission */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="border-b border-slate-100 px-5 py-4">
-          <CardTitle className="text-base font-semibold text-slate-900">
-            Platform Commission
-          </CardTitle>
-
-          <p className="text-xs text-slate-500">
-            Set the commission percentage charged on successful hiring fees.
-          </p>
-        </CardHeader>
-
-        <CardContent className="p-5">
-          <div className="max-w-sm space-y-2">
-            <Label>Commission Percentage (%)</Label>
-
-            <div className="relative">
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                value={settings.platformCommissionPercent}
-                onChange={(e) =>
-                  handleChange(
-                    "platformCommissionPercent",
-                    e.target.value
-                  )
-                }
-                className="pr-10"
-                disabled={saving}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void fetchSettings(true)}
+              disabled={saving || loading}
+              className="h-10 border-slate-200 text-xs font-semibold"
+            >
+              <RefreshCw
+                className={`mr-2 h-3.5 w-3.5 ${
+                  loading ? "animate-spin" : ""
+                }`}
               />
+              Reset from server
+            </Button>
 
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-                %
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-500">
-              Must be between 0% and 100%.
-            </p>
+            <Button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={saving || loading || !hasLoaded || Boolean(loadError)}
+              className="h-10 gap-2 bg-indigo-600 px-5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Publishing...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Save & Publish
+                </>
+              )}
+            </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Save */}
-      <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-slate-500">
-          Changes will apply to platform pricing after saving.
-        </p>
-
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={saving || loading}
-          className="h-10 gap-2 bg-indigo-600 px-6 text-white hover:bg-indigo-700"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Saving Changes...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4" />
-              Save Pricing
-            </>
-          )}
-        </Button>
+        </div>
       </div>
     </div>
   );
