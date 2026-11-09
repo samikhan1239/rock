@@ -220,7 +220,7 @@ export default function HowItWorks() {
 
                     {index === 2 && (
                       <Link
-                        href="/sign-up"
+                        href="/login"
                         className="group mt-9 inline-flex items-center gap-3 rounded-full bg-cyan-400 px-7 py-4 text-sm font-semibold text-[#04101C] transition hover:bg-white"
                       >
                         Start your journey

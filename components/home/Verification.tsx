@@ -488,7 +488,7 @@ function TrustStatement() {
         </p>
 
         <a
-          href="/sign-up?role=TEACHER"
+          href="/login?role=TEACHER"
           className="group mt-10 inline-flex items-center gap-3 rounded-full border border-cyan-300/30 bg-cyan-300/[0.08] px-8 py-4 text-sm font-semibold text-cyan-200 transition-all duration-300 hover:border-cyan-300 hover:bg-cyan-300 hover:text-[#050914] hover:shadow-[0_0_35px_rgba(34,211,238,0.2)]"
         >
           Become a Verified Educator

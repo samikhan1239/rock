@@ -203,7 +203,7 @@ export default function FindYourTutor() {
               className="mt-7 flex flex-wrap items-center gap-5"
             >
               <Link
-                href="/sign-up"
+                href="/login"
                 className="group inline-flex items-center gap-3 rounded-full bg-cyan-400 px-6 py-3.5 text-sm font-semibold text-[#04101C] transition-all duration-300 hover:bg-white hover:shadow-[0_0_35px_rgba(34,211,238,0.3)]"
               >
                 Find your mentor

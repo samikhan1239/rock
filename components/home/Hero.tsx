@@ -127,7 +127,7 @@ return ( <section
         className="mt-8 flex flex-wrap gap-3 sm:mt-10 sm:gap-4"
       >
         <Link
-          href="/sign-up"
+          href="/login"
           className="group flex items-center gap-3 rounded-full bg-cyan-300 px-6 py-3.5 text-sm font-semibold text-[#06101d] transition-all duration-300 hover:-translate-y-1 hover:bg-cyan-200 hover:shadow-[0_0_35px_rgba(0,229,255,0.25)] sm:px-7 sm:py-4"
         >
           Get Started

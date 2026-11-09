@@ -95,7 +95,7 @@ export default function FinalCTA() {
         >
           <motion.div variants={reveal}>
             <Link
-              href="/sign-up?role=CLIENT"
+              href="/login?role=CLIENT"
               className="group inline-flex min-h-12 items-center justify-center gap-3 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 px-7 py-3 text-sm font-semibold text-[#04111d] shadow-[0_0_25px_rgba(34,211,238,0.16)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_35px_rgba(34,211,238,0.35)]"
             >
               <BookOpen size={17} />
@@ -109,7 +109,7 @@ export default function FinalCTA() {
 
           <motion.div variants={reveal}>
             <Link
-              href="/sign-up?role=TEACHER"
+              href="/login?role=TEACHER"
               className="group inline-flex min-h-12 items-center justify-center gap-3 rounded-full border border-white/20 bg-[#071321]/75 px-7 py-3 text-sm font-semibold text-white backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-cyan-300/50 hover:bg-[#10243a]/90"
             >
               <GraduationCap size={19} className="text-cyan-300" />

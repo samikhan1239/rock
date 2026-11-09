@@ -111,14 +111,14 @@ export default function Navbar() {
           ) : (
             <>
               <Link
-                href="/sign-in"
+                href="/register"
                 className="rounded-xl px-4 py-2.5 text-sm font-medium text-white/80 transition-colors hover:text-cyan-300"
               >
                 Log in
               </Link>
 
               <Link
-                href="/sign-up"
+                href="/login"
                 className="group rounded-xl bg-cyan-400 px-5 py-2.5 text-sm font-semibold text-[#04111c] transition-all duration-300 hover:-translate-y-0.5 hover:bg-cyan-300 hover:shadow-[0_0_25px_rgba(34,211,238,0.3)]"
               >
                 Get Started →
@@ -199,7 +199,7 @@ export default function Navbar() {
           ) : (
             <>
               <Link
-                href="/sign-in"
+                href="/register"
                 onClick={() => setMenuOpen(false)}
                 className="rounded-xl px-4 py-3 text-sm font-medium text-white/80 hover:bg-white/5"
               >
@@ -207,7 +207,7 @@ export default function Navbar() {
               </Link>
 
               <Link
-                href="/sign-up"
+                href="/login"
                 onClick={() => setMenuOpen(false)}
                 className="rounded-xl bg-cyan-400 px-4 py-3 text-center text-sm font-semibold text-[#04111c] transition-colors hover:bg-cyan-300"
               >
