@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 
 import { uploadAIInterviewRecording } from "@/lib/cloudinary-upload";
-import AIInterviewRoom from "@/components/AIInterviewRoom"; // ← adjust path if needed
+import AIInterviewRoom from "@/components/AIInterviewRoom";
 
 type Message = {
   role: "user" | "assistant";
@@ -84,6 +84,7 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // STATE
   // --------------------------------------------------
+
   const [step, setStep] = useState<Step>("ready");
   const [messages, setMessages] = useState<Message[]>([]);
   const [interviewId, setInterviewId] = useState<string | null>(null);
@@ -97,11 +98,16 @@ export default function AIInterviewPage() {
   const [error, setError] = useState("");
   const [recSeconds, setRecSeconds] = useState(0);
 
-  const [evaluation, setEvaluation] = useState<InterviewResult | null>(null);
+  const [evaluation, setEvaluation] =
+    useState<InterviewResult | null>(null);
+
   const [evaluationAttempts, setEvaluationAttempts] = useState(0);
   const [evaluationElapsed, setEvaluationElapsed] = useState(0);
   const [evaluationMessageIndex, setEvaluationMessageIndex] = useState(0);
-  const [submissionStage, setSubmissionStage] = useState<SubmissionStage>("recording");
+
+  const [submissionStage, setSubmissionStage] =
+    useState<SubmissionStage>("recording");
+
   const [uploadProgress, setUploadProgress] = useState(0);
   const [evaluationTimedOut, setEvaluationTimedOut] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -109,17 +115,24 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // REFS
   // --------------------------------------------------
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordingBlobRef = useRef<Blob | null>(null);
+
   const recordingUploadedRef = useRef(false);
   const interviewSubmittedRef = useRef(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const evaluationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const evaluationClockRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const evaluationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const evaluationClockRef = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
+
   const evaluationStartRef = useRef<number | null>(null);
   const recStartRef = useRef(0);
 
@@ -130,18 +143,23 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // HELPERS
   // --------------------------------------------------
-  const addMessage = useCallback((role: Message["role"], content: string) => {
-    setMessages((previous) => [
-      ...previous,
-      { role, content, timestamp: new Date() },
-    ]);
-  }, []);
+
+  const addMessage = useCallback(
+    (role: Message["role"], content: string) => {
+      setMessages((previous) => [
+        ...previous,
+        { role, content, timestamp: new Date() },
+      ]);
+    },
+    []
+  );
 
   const clearEvaluationTimers = useCallback(() => {
     if (evaluationTimerRef.current) {
       clearTimeout(evaluationTimerRef.current);
       evaluationTimerRef.current = null;
     }
+
     if (evaluationClockRef.current) {
       clearInterval(evaluationClockRef.current);
       evaluationClockRef.current = null;
@@ -151,11 +169,13 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // CAMERA PREVIEW
   // --------------------------------------------------
+
   useEffect(() => {
     if (step !== "live") return;
 
     const video = videoRef.current;
     const stream = streamRef.current;
+
     if (!video || !stream) return;
 
     video.srcObject = stream;
@@ -167,11 +187,14 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // RECORDING TIMER
   // --------------------------------------------------
+
   useEffect(() => {
     if (!recording) return;
 
     timerRef.current = setInterval(() => {
-      setRecSeconds(Math.floor((Date.now() - recStartRef.current) / 1000));
+      setRecSeconds(
+        Math.floor((Date.now() - recStartRef.current) / 1000)
+      );
     }, 1000);
 
     return () => {
@@ -185,6 +208,7 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // EVALUATION CLOCK
   // --------------------------------------------------
+
   useEffect(() => {
     if (step !== "evaluating") return;
 
@@ -211,6 +235,7 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // CLEANUP
   // --------------------------------------------------
+
   const cleanupMedia = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -237,6 +262,7 @@ export default function AIInterviewPage() {
 
   useEffect(() => {
     mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
       clearEvaluationTimers();
@@ -247,6 +273,7 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // AI VOICE (TTS)
   // --------------------------------------------------
+
   const speak = useCallback((text: string) => {
     return new Promise<void>((resolve) => {
       if (!window.speechSynthesis) {
@@ -257,12 +284,14 @@ export default function AIInterviewPage() {
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
+
       utterance.lang = "en-IN";
       utterance.rate = 0.94;
       utterance.pitch = 1;
       utterance.volume = 1;
 
       const voices = window.speechSynthesis.getVoices();
+
       const selectedVoice =
         voices.find((v) => v.lang === "en-IN") ||
         voices.find((v) => v.lang.startsWith("en-IN")) ||
@@ -272,6 +301,7 @@ export default function AIInterviewPage() {
 
       utterance.onstart = () => {
         if (!mountedRef.current) return;
+
         setSpeaking(true);
         setStatusText("AI interviewer is speaking");
       };
@@ -293,6 +323,7 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // VIDEO RECORDING
   // --------------------------------------------------
+
   const startRecorder = (stream: MediaStream) => {
     chunksRef.current = [];
     recordingBlobRef.current = null;
@@ -308,16 +339,22 @@ export default function AIInterviewPage() {
       audioBitsPerSecond: 48_000,
     };
 
-    if (supportedMimeType) options.mimeType = supportedMimeType;
+    if (supportedMimeType) {
+      options.mimeType = supportedMimeType;
+    }
 
     const recorder = new MediaRecorder(stream, options);
+
     recorderRef.current = recorder;
 
     recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunksRef.current.push(event.data);
+      if (event.data.size > 0) {
+        chunksRef.current.push(event.data);
+      }
     };
 
     recorder.start(1000);
+
     recStartRef.current = Date.now();
     setRecSeconds(0);
     setRecording(true);
@@ -331,6 +368,7 @@ export default function AIInterviewPage() {
       }
 
       const recorder = recorderRef.current;
+
       if (!recorder) {
         reject(new Error("Interview recorder was not initialized."));
         return;
@@ -340,6 +378,7 @@ export default function AIInterviewPage() {
         const blob = new Blob(chunksRef.current, {
           type: recorder.mimeType || "video/webm",
         });
+
         recordingBlobRef.current = blob;
         resolve(blob);
         return;
@@ -347,15 +386,19 @@ export default function AIInterviewPage() {
 
       recorder.onstop = () => {
         setRecording(false);
+
         const blob = new Blob(chunksRef.current, {
           type: recorder.mimeType || "video/webm",
         });
+
         recordingBlobRef.current = blob;
         resolve(blob);
       };
 
       recorder.onerror = () => {
-        reject(new Error("Failed to finalize the interview recording."));
+        reject(
+          new Error("Failed to finalize the interview recording.")
+        );
       };
 
       recorder.stop();
@@ -365,6 +408,7 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // START INTERVIEW
   // --------------------------------------------------
+
   const beginInterview = async () => {
     setLoading(true);
     setError("");
@@ -396,6 +440,7 @@ export default function AIInterviewPage() {
       });
 
       streamRef.current = stream;
+
       setStep("live");
 
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -403,11 +448,16 @@ export default function AIInterviewPage() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.muted = true;
+
         await videoRef.current.play().catch(() => undefined);
+
         setCameraOn(true);
       }
 
-      setStatusText("Gemini is preparing your first interview question...");
+      setStatusText(
+        "Gemini is preparing your first interview question..."
+      );
+
       startRecorder(stream);
 
       const response = await fetch("/api/teacher/ai-interview", {
@@ -419,34 +469,46 @@ export default function AIInterviewPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Unable to start your interview.");
+        throw new Error(
+          data.error || "Unable to start your interview."
+        );
       }
 
       if (!data.interviewId || !data.message) {
-        throw new Error("The interview service returned an incomplete response.");
+        throw new Error(
+          "The interview service returned an incomplete response."
+        );
       }
 
       setInterviewId(data.interviewId);
+
       addMessage("assistant", data.message);
+
       setLoading(false);
 
       await speak(data.message);
+
       setStatusText("Your turn — speak naturally");
     } catch (err) {
       const name = (err as { name?: string })?.name;
+
       let message =
-        err instanceof Error ? err.message : "Unable to start the interview.";
+        err instanceof Error
+          ? err.message
+          : "Unable to start the interview.";
 
       if (name === "NotAllowedError") {
         message =
           "Camera or microphone permission was denied. Please allow both permissions and try again.";
       }
+
       if (name === "NotFoundError") {
         message =
           "No camera or microphone was detected. Connect a device and try again.";
       }
 
       cleanupMedia();
+
       setStep("ready");
       setLoading(false);
       setError(message);
@@ -457,6 +519,7 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // SUBMIT ANSWER (used by AIInterviewRoom)
   // --------------------------------------------------
+
   const handleSubmitAnswer = useCallback(
     async (answer: string) => {
       const response = await fetch("/api/teacher/ai-interview", {
@@ -472,15 +535,21 @@ export default function AIInterviewPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Unable to process your answer.");
+        throw new Error(
+          data.error || "Unable to process your answer."
+        );
       }
 
       if (!data.message || typeof data.message !== "string") {
-        throw new Error("The AI interviewer returned an empty response.");
+        throw new Error(
+          "The AI interviewer returned an empty response."
+        );
       }
 
       addMessage("assistant", data.message);
+
       await speak(data.message);
+
       setStatusText("Your turn — speak naturally");
     },
     [addMessage, interviewId, speak]
@@ -489,16 +558,21 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // EVALUATION
   // --------------------------------------------------
+
   const startEvaluation = useCallback(() => {
     clearEvaluationTimers();
+
     evaluationStartRef.current = Date.now();
+
     setEvaluationElapsed(0);
     setEvaluationAttempts(0);
     setEvaluationTimedOut(false);
     setEvaluationMessageIndex(0);
     setError("");
+
     setStep("evaluating");
     setSubmissionStage("evaluating");
+
     setStatusText(
       "Your interview has been submitted. Gemini is evaluating your answers."
     );
@@ -516,21 +590,33 @@ export default function AIInterviewPage() {
           `/api/teacher/ai-interview?action=evaluation&interviewId=${encodeURIComponent(
             interviewId
           )}`,
-          { method: "GET", cache: "no-store" }
+          {
+            method: "GET",
+            cache: "no-store",
+          }
         );
 
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || "Unable to retrieve interview evaluation.");
+          throw new Error(
+            data.error ||
+              "Unable to retrieve interview evaluation."
+          );
         }
 
+        // IMPORTANT:
+        // Show results only after the backend returns the AI evaluation.
+        // Do not redirect to onboarding automatically.
         if (data.result) {
           clearEvaluationTimers();
+
           setEvaluation(data.result);
           setStep("results");
           setSubmissionStage("completed");
+
           setStatusText("Your interview evaluation is ready.");
+
           return;
         }
 
@@ -542,22 +628,27 @@ export default function AIInterviewPage() {
 
           if (attempt + 1 >= MAX_EVALUATION_ATTEMPTS) {
             setEvaluationTimedOut(true);
+
             setStatusText(
               "Your interview is safely submitted. The evaluation is taking longer than expected."
             );
+
             return;
           }
 
           evaluationTimerRef.current = setTimeout(() => {
             checkEvaluation(attempt + 1);
           }, EVALUATION_POLL_INTERVAL);
+
           return;
         }
 
         throw new Error("Evaluation response was incomplete.");
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Unable to load evaluation.";
+          err instanceof Error
+            ? err.message
+            : "Unable to load evaluation.";
 
         if (attempt + 1 >= MAX_EVALUATION_ATTEMPTS) {
           setError(message);
@@ -580,10 +671,18 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // FINISH / SUBMIT INTERVIEW
   // --------------------------------------------------
+
   const submitInterview = async () => {
-    if (!interviewId || finishingRef.current || redirectingRef.current) return;
+    if (
+      !interviewId ||
+      finishingRef.current ||
+      redirectingRef.current
+    ) {
+      return;
+    }
 
     finishingRef.current = true;
+
     setLoading(true);
     setError("");
     setStep("submitting");
@@ -593,7 +692,9 @@ export default function AIInterviewPage() {
 
       if (!blob) {
         setStatusText("Finalizing your interview recording...");
+
         blob = await stopRecorder();
+
         recordingBlobRef.current = blob;
       }
 
@@ -611,12 +712,17 @@ export default function AIInterviewPage() {
       if (!recordingUploadedRef.current) {
         setSubmissionStage("uploading");
         setUploadProgress(0);
-        setStatusText("Uploading your interview recording securely to Cloudinary...");
+
+        setStatusText(
+          "Uploading your interview recording securely to Cloudinary..."
+        );
 
         const recordingFile = new File(
           [blob],
           `interview-${interviewId}.webm`,
-          { type: blob.type || "video/webm" }
+          {
+            type: blob.type || "video/webm",
+          }
         );
 
         await uploadAIInterviewRecording({
@@ -624,30 +730,40 @@ export default function AIInterviewPage() {
           interviewId,
           onProgress: (progress) => {
             if (!mountedRef.current) return;
+
             setUploadProgress(progress);
           },
         });
 
         recordingUploadedRef.current = true;
+
         setUploadProgress(100);
       }
 
       // Finish interview
       if (!interviewSubmittedRef.current) {
         setSubmissionStage("submitting");
-        setStatusText("Recording uploaded successfully. Submitting your interview...");
+
+        setStatusText(
+          "Recording uploaded successfully. Submitting your interview..."
+        );
 
         const response = await fetch("/api/teacher/ai-interview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "finish", interviewId }),
+          body: JSON.stringify({
+            action: "finish",
+            interviewId,
+          }),
         });
 
         const data = await response.json();
 
         if (!response.ok || data.success === false) {
           throw new Error(
-            data.message || data.error || "Interview submission failed."
+            data.message ||
+              data.error ||
+              "Interview submission failed."
           );
         }
 
@@ -655,19 +771,28 @@ export default function AIInterviewPage() {
       }
 
       cleanupMedia();
+
       setLoading(false);
+
       finishingRef.current = false;
 
+      // Start AI evaluation after successful submission.
+      // The results screen appears only when evaluation is available.
       startEvaluation();
+
       await checkEvaluation(0);
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Unable to submit your interview.";
+        err instanceof Error
+          ? err.message
+          : "Unable to submit your interview.";
 
       setError(message);
       setLoading(false);
       setStatusText("Submission needs attention");
+
       finishingRef.current = false;
+
       setStep("submitting");
     }
   };
@@ -682,8 +807,11 @@ export default function AIInterviewPage() {
     }
 
     finishingRef.current = true;
+
     window.speechSynthesis?.cancel();
+
     setSpeaking(false);
+
     finishingRef.current = false;
 
     await submitInterview();
@@ -691,7 +819,9 @@ export default function AIInterviewPage() {
 
   const retrySubmission = async () => {
     if (isRetrying || finishingRef.current) return;
+
     setIsRetrying(true);
+
     try {
       await submitInterview();
     } finally {
@@ -701,7 +831,9 @@ export default function AIInterviewPage() {
 
   const retryEvaluation = () => {
     if (!interviewId) return;
+
     clearEvaluationTimers();
+
     setError("");
     setEvaluationTimedOut(false);
     setEvaluationAttempts(0);
@@ -711,19 +843,23 @@ export default function AIInterviewPage() {
     }
 
     setStatusText("Checking your interview evaluation...");
+
     checkEvaluation(0);
   };
 
   // --------------------------------------------------
   // READY SCREEN
   // --------------------------------------------------
+
   if (step === "ready") {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
         <div className="mx-auto max-w-5xl">
           <button
             type="button"
-            onClick={() => router.push("/teacher/onboarding?step=5")}
+            onClick={() =>
+              router.push("/teacher/onboarding?step=5")
+            }
             className="mb-8 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-indigo-600"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -739,7 +875,9 @@ export default function AIInterviewPage() {
 
               <h1 className="max-w-xl text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
                 Let&apos;s get to know your{" "}
-                <span className="text-indigo-600">teaching skills.</span>
+                <span className="text-indigo-600">
+                  teaching skills.
+                </span>
               </h1>
 
               <p className="mt-4 max-w-lg text-sm leading-7 text-slate-500 sm:text-base">
@@ -770,15 +908,18 @@ export default function AIInterviewPage() {
                   },
                 ].map((item) => {
                   const Icon = item.icon;
+
                   return (
                     <div key={item.title} className="flex gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
                         <Icon className="h-5 w-5" />
                       </div>
+
                       <div>
                         <h3 className="text-sm font-semibold text-slate-800">
                           {item.title}
                         </h3>
+
                         <p className="mt-1 text-sm leading-6 text-slate-500">
                           {item.description}
                         </p>
@@ -825,14 +966,19 @@ export default function AIInterviewPage() {
 
             <section className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm sm:p-8">
               <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-indigo-100/70 blur-3xl" />
+
               <div className="relative">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">
                       Your interview assistant
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">Powered by AI</p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Powered by AI
+                    </p>
                   </div>
+
                   <span className="flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
                     <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
                     Ready
@@ -842,6 +988,7 @@ export default function AIInterviewPage() {
                 <div className="mt-10 flex flex-col items-center">
                   <div className="relative flex h-36 w-36 items-center justify-center rounded-full bg-indigo-50">
                     <div className="absolute inset-3 animate-pulse rounded-full border border-indigo-200" />
+
                     <div className="flex h-24 w-24 items-center justify-center rounded-full bg-indigo-600 shadow-xl shadow-indigo-600/20">
                       <Brain className="h-12 w-12 text-white" />
                     </div>
@@ -850,6 +997,7 @@ export default function AIInterviewPage() {
                   <h2 className="mt-6 text-lg font-bold text-slate-900">
                     Hello, future educator!
                   </h2>
+
                   <p className="mt-2 max-w-xs text-center text-sm leading-6 text-slate-500">
                     I&apos;ll ask you a few questions about your teaching
                     approach, subject knowledge, and classroom experience.
@@ -859,22 +1007,38 @@ export default function AIInterviewPage() {
                 <div className="mt-9 grid grid-cols-3 gap-3 border-t border-slate-100 pt-5">
                   <div className="text-center">
                     <Clock3 className="mx-auto h-5 w-5 text-indigo-500" />
+
                     <p className="mt-2 text-xs font-semibold text-slate-700">
                       Flexible
                     </p>
-                    <p className="mt-1 text-[11px] text-slate-400">At your pace</p>
+
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      At your pace
+                    </p>
                   </div>
+
                   <div className="text-center">
                     <Mic className="mx-auto h-5 w-5 text-indigo-500" />
-                    <p className="mt-2 text-xs font-semibold text-slate-700">Voice</p>
-                    <p className="mt-1 text-[11px] text-slate-400">Hands-free</p>
+
+                    <p className="mt-2 text-xs font-semibold text-slate-700">
+                      Voice
+                    </p>
+
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Hands-free
+                    </p>
                   </div>
+
                   <div className="text-center">
                     <Award className="mx-auto h-5 w-5 text-indigo-500" />
+
                     <p className="mt-2 text-xs font-semibold text-slate-700">
                       Evaluation
                     </p>
-                    <p className="mt-1 text-[11px] text-slate-400">Skill-based</p>
+
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Skill-based
+                    </p>
                   </div>
                 </div>
               </div>
@@ -886,8 +1050,9 @@ export default function AIInterviewPage() {
   }
 
   // --------------------------------------------------
-  // LIVE INTERVIEW ROOM (using the new component)
+  // LIVE INTERVIEW ROOM
   // --------------------------------------------------
+
   if (step === "live") {
     return (
       <AIInterviewRoom
@@ -916,6 +1081,7 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // SUBMITTING SCREEN
   // --------------------------------------------------
+
   if (step === "submitting") {
     const stages = [
       {
@@ -947,7 +1113,9 @@ export default function AIInterviewPage() {
           </div>
 
           <h2 className="mt-5 text-center text-xl font-bold text-slate-900">
-            {error ? "Submission needs attention" : "Submitting your interview"}
+            {error
+              ? "Submission needs attention"
+              : "Submitting your interview"}
           </h2>
 
           <p className="mt-2 text-center text-sm leading-6 text-slate-500">
@@ -957,11 +1125,13 @@ export default function AIInterviewPage() {
           <div className="mt-8 space-y-4">
             {stages.map((item, index) => {
               const Icon = item.icon;
+
               const completed =
                 (recordingUploadedRef.current && index === 0) ||
                 (interviewSubmittedRef.current && index === 1);
 
-              const active = !completed && activeIndex === index && !error;
+              const active =
+                !completed && activeIndex === index && !error;
 
               return (
                 <div
@@ -987,10 +1157,12 @@ export default function AIInterviewPage() {
                       <Icon className="h-5 w-5" />
                     )}
                   </div>
+
                   <div>
                     <p className="text-sm font-semibold text-slate-800">
                       {item.title}
                     </p>
+
                     <p className="mt-1 text-xs text-slate-500">
                       {item.description}
                     </p>
@@ -1006,6 +1178,7 @@ export default function AIInterviewPage() {
                 <span>Upload progress</span>
                 <span>{uploadProgress}%</span>
               </div>
+
               <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                 <div
                   className="h-full rounded-full bg-indigo-600 transition-all duration-300"
@@ -1040,11 +1213,15 @@ export default function AIInterviewPage() {
                 ) : (
                   <RefreshCw className="h-4 w-4" />
                 )}
+
                 Retry submission
               </button>
+
               <button
                 type="button"
-                onClick={() => router.replace("/teacher/onboarding")}
+                onClick={() =>
+                  router.replace("/teacher/onboarding")
+                }
                 className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 px-5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
               >
                 Return to onboarding
@@ -1064,12 +1241,15 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // EVALUATION SCREEN
   // --------------------------------------------------
+
   if (step === "evaluating") {
     const elapsedMinutes = Math.floor(evaluationElapsed / 60);
     const elapsedSeconds = evaluationElapsed % 60;
-    const elapsedText = `${String(elapsedMinutes).padStart(2, "0")}:${String(
-      elapsedSeconds
-    ).padStart(2, "0")}`;
+
+    const elapsedText = `${String(elapsedMinutes).padStart(
+      2,
+      "0"
+    )}:${String(elapsedSeconds).padStart(2, "0")}`;
 
     const progress = evaluationTimedOut
       ? 92
@@ -1089,6 +1269,7 @@ export default function AIInterviewPage() {
             {!evaluationTimedOut && (
               <div className="absolute inset-0 animate-ping rounded-full border border-indigo-200 opacity-40" />
             )}
+
             <Brain className="h-11 w-11 text-indigo-600" />
           </div>
 
@@ -1117,6 +1298,7 @@ export default function AIInterviewPage() {
                 <Timer className="h-4 w-4 text-indigo-600" />
                 Evaluation time
               </div>
+
               <span className="text-sm font-bold tabular-nums text-indigo-700">
                 {elapsedText}
               </span>
@@ -1142,8 +1324,12 @@ export default function AIInterviewPage() {
                 evaluationSteps.length - 1,
                 Math.floor(evaluationAttempts / 5)
               );
-              const completed = !evaluationTimedOut && index < activeIndex;
-              const active = !evaluationTimedOut && index === activeIndex;
+
+              const completed =
+                !evaluationTimedOut && index < activeIndex;
+
+              const active =
+                !evaluationTimedOut && index === activeIndex;
 
               return (
                 <div key={item} className="flex items-center gap-3">
@@ -1159,9 +1345,12 @@ export default function AIInterviewPage() {
                     ) : active ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <span className="text-xs font-semibold">{index + 1}</span>
+                      <span className="text-xs font-semibold">
+                        {index + 1}
+                      </span>
                     )}
                   </div>
+
                   <span
                     className={`text-sm ${
                       completed || active
@@ -1197,8 +1386,8 @@ export default function AIInterviewPage() {
           )}
 
           <p className="mt-5 text-center text-xs leading-5 text-slate-400">
-            Please don&apos;t close this page until your result appears. Your
-            submitted interview recording is already saved.
+            Please don&apos;t close this page until your result appears.
+            Your submitted interview recording is already saved.
           </p>
         </div>
       </main>
@@ -1208,6 +1397,7 @@ export default function AIInterviewPage() {
   // --------------------------------------------------
   // RESULTS SCREEN
   // --------------------------------------------------
+
   if (step === "results" && evaluation) {
     const score = evaluation.overallScore ?? 0;
 
@@ -1277,6 +1467,7 @@ export default function AIInterviewPage() {
                 {evaluation.overallScore !== null
                   ? evaluation.overallScore.toFixed(1)
                   : "—"}
+
                 <span className="text-xl text-slate-400">/10</span>
               </div>
 
@@ -1300,21 +1491,27 @@ export default function AIInterviewPage() {
                       <div className="mb-2 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Icon className="h-4 w-4 text-indigo-500" />
+
                           <span className="text-sm font-medium text-slate-700">
                             {metric.title}
                           </span>
                         </div>
+
                         <span className="text-sm font-bold text-slate-900">
                           {metric.score !== null
                             ? `${metric.score.toFixed(1)}/10`
                             : "—"}
                         </span>
                       </div>
+
                       <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                         <div
                           className="h-full rounded-full bg-indigo-600 transition-all duration-700"
                           style={{
-                            width: `${Math.max(0, Math.min(100, value * 10))}%`,
+                            width: `${Math.max(
+                              0,
+                              Math.min(100, value * 10)
+                            )}%`,
                           }}
                         />
                       </div>
@@ -1329,10 +1526,12 @@ export default function AIInterviewPage() {
             <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-6">
               <div className="flex items-center gap-2">
                 <Brain className="h-5 w-5 text-indigo-600" />
+
                 <h2 className="font-bold text-slate-900">
                   AI interviewer&apos;s feedback
                 </h2>
               </div>
+
               <p className="mt-4 text-sm leading-7 text-slate-600">
                 {evaluation.summary}
               </p>
@@ -1343,14 +1542,24 @@ export default function AIInterviewPage() {
             <div className="rounded-2xl border border-indigo-100 bg-white p-6">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-indigo-600" />
-                <h2 className="font-bold text-slate-900">Your strengths</h2>
+
+                <h2 className="font-bold text-slate-900">
+                  Your strengths
+                </h2>
               </div>
+
               <div className="mt-5 space-y-3">
                 {evaluation.strengths?.length ? (
                   evaluation.strengths.map((item, index) => (
-                    <div key={`${item}-${index}`} className="flex items-start gap-2">
+                    <div
+                      key={`${item}-${index}`}
+                      className="flex items-start gap-2"
+                    >
                       <Check className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
-                      <p className="text-sm leading-6 text-slate-600">{item}</p>
+
+                      <p className="text-sm leading-6 text-slate-600">
+                        {item}
+                      </p>
                     </div>
                   ))
                 ) : (
@@ -1364,14 +1573,24 @@ export default function AIInterviewPage() {
             <div className="rounded-2xl border border-amber-200 bg-white p-6">
               <div className="flex items-center gap-2">
                 <Activity className="h-5 w-5 text-amber-600" />
-                <h2 className="font-bold text-slate-900">Areas to improve</h2>
+
+                <h2 className="font-bold text-slate-900">
+                  Areas to improve
+                </h2>
               </div>
+
               <div className="mt-5 space-y-3">
                 {evaluation.weaknesses?.length ? (
                   evaluation.weaknesses.map((item, index) => (
-                    <div key={`${item}-${index}`} className="flex items-start gap-2">
+                    <div
+                      key={`${item}-${index}`}
+                      className="flex items-start gap-2"
+                    >
                       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                      <p className="text-sm leading-6 text-slate-600">{item}</p>
+
+                      <p className="text-sm leading-6 text-slate-600">
+                        {item}
+                      </p>
                     </div>
                   ))
                 ) : (
@@ -1383,21 +1602,26 @@ export default function AIInterviewPage() {
             </div>
           </section>
 
+          {/* Continue only after the teacher has viewed the AI result. */}
           <div className="mt-8 flex flex-col justify-between gap-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-5 sm:flex-row sm:items-center">
             <div>
               <h3 className="font-semibold text-slate-900">
                 Interview successfully completed
               </h3>
+
               <p className="mt-1 text-sm text-slate-600">
                 Continue to complete your teacher registration.
               </p>
             </div>
+
             <button
               type="button"
               onClick={() => {
+                // Navigate to onboarding step 5 only after
+                // the user explicitly clicks Continue.
                 redirectingRef.current = true;
-                router.replace("/teacher/onboarding");
-                router.refresh();
+
+                router.push("/teacher/onboarding?step=5");
               }}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white transition hover:bg-indigo-700"
             >
@@ -1410,6 +1634,9 @@ export default function AIInterviewPage() {
     );
   }
 
-  // Fallback
+  // --------------------------------------------------
+  // FALLBACK
+  // --------------------------------------------------
+
   return null;
 }

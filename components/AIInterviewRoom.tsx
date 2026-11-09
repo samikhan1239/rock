@@ -7,14 +7,11 @@ import {
   useState,
 } from "react";
 
-import { useRouter } from "next/navigation";
-
 import {
   AlertCircle,
   AudioLines,
   Brain,
   CameraOff,
-  CheckCircle2,
   Loader2,
   MessageSquare,
   Mic,
@@ -92,8 +89,6 @@ const MIC_RESTART_DELAY = 400;
 const MIC_START_DELAY = 500;
 
 const THINKING_DELAY = 900;
-
-// Fixed questions. No Gemini request is made to generate questions.
 
 const INTERVIEW_QUESTIONS: InterviewQuestion[] = [
   {
@@ -193,8 +188,6 @@ export default function AIInterviewRoom({
   videoRef,
   speak,
 }: AIInterviewRoomProps) {
-  const router = useRouter();
-
   // --------------------------------------------------
   // STATE
   // --------------------------------------------------
@@ -277,6 +270,9 @@ export default function AIInterviewRoom({
 
   const localCameraStreamRef = useRef<MediaStream | null>(null);
 
+  // Keep the latest messages available inside asynchronous callbacks.
+  const messagesRef = useRef(messages);
+
   // --------------------------------------------------
   // SYNC PROPS
   // --------------------------------------------------
@@ -296,6 +292,10 @@ export default function AIInterviewRoom({
   useEffect(() => {
     addMessageRef.current = onAddMessage;
   }, [onAddMessage]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     speakRef.current = speak;
@@ -445,10 +445,11 @@ export default function AIInterviewRoom({
       setStatusText("Completing your teaching assessment...");
 
       try {
-        // Submit the completed interview.
+        // Submit the completed interview to the parent component.
+        // The parent handles recording upload and AI evaluation.
         await finishCallbackRef.current(finalTranscript);
 
-        // Stop the local camera stream before leaving.
+        // Stop the local camera stream after submission.
         if (localCameraStreamRef.current) {
           localCameraStreamRef.current
             .getTracks()
@@ -457,10 +458,11 @@ export default function AIInterviewRoom({
           localCameraStreamRef.current = null;
         }
 
-        // Redirect only after successful completion.
-        router.replace("/teacher/onboarding?step=5");
-
-        router.refresh();
+        // IMPORTANT:
+        // Do not redirect to onboarding here.
+        // AIInterviewPage must display the evaluation first.
+        // Navigation to onboarding happens only when the user
+        // clicks the Continue button on the evaluation screen.
       } catch (err) {
         console.error("Interview finish failed:", err);
 
@@ -480,7 +482,6 @@ export default function AIInterviewRoom({
       }
     },
     [
-      router,
       stopMic,
       clearSilenceTimer,
       clearThinkingTimer,
@@ -790,7 +791,6 @@ export default function AIInterviewRoom({
 
       setStatusText("Preparing the next question...");
 
-      // Visual transition only. No Gemini request.
       await new Promise<void>((resolve) => {
         thinkingTimerRef.current = setTimeout(
           resolve,
@@ -817,8 +817,28 @@ export default function AIInterviewRoom({
 
       setStatusText(`Asking: ${question.title}`);
 
-      // Add the current question to the conversation.
-      addMessageRef.current("assistant", question.message);
+      // --------------------------------------------------
+      // PREVENT DUPLICATE OPENING GREETING
+      // --------------------------------------------------
+
+      // The parent AIInterviewPage may already add the
+      // initial greeting returned by the start API.
+      //
+      // If an assistant message already exists, do not
+      // add another opening message here.
+
+      const openingMessageAlreadyExists =
+        index === 0 &&
+        messagesRef.current.some(
+          (message) => message.role === "assistant"
+        );
+
+      if (!openingMessageAlreadyExists) {
+        addMessageRef.current(
+          "assistant",
+          question.message
+        );
+      }
 
       // SPEAK QUESTION
 
@@ -1684,41 +1704,6 @@ export default function AIInterviewRoom({
             )}
 
             <div ref={chatEndRef} />
-          </div>
-
-          {/* CURRENT QUESTION ONLY */}
-
-          <div className="shrink-0 border-t border-slate-100 p-4">
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
-                  {loading ? (
-                    <Brain className="h-4 w-4 animate-pulse" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4" />
-                  )}
-                </div>
-
-                <p className="text-xs font-bold text-indigo-900">
-                  {loading
-                    ? "Preparing next question"
-                    : currentQuestion?.title ?? "Assessment"}
-                </p>
-              </div>
-
-              <p className="mt-2 text-xs leading-5 text-indigo-800">
-                {loading
-                  ? "Please wait while the interviewer prepares the next question."
-                  : currentQuestion
-                    ? currentQuestion.message
-                    : "Your interview questions will appear here."}
-              </p>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2 text-[10px] text-slate-400">
-              <ShieldCheck className="h-3.5 w-3.5 text-indigo-500" />
-              One question at a time · Automatic progression
-            </div>
           </div>
         </section>
       </div>
